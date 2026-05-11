@@ -37,14 +37,29 @@ id,text,tags,source,enabled,quoteAudioUrl,aiMessage,aiAudioUrl,generatedDate
 `gas/Code.gs` をGoogle Apps Scriptへ貼り付け、上のスプレッドシートにバインドするか、そのまま Apps Script プロジェクトとして作成してデプロイします。次の Script Properties を設定します。
 
 ```text
-OPENAI_API_KEY
+GEMINI_API_KEY
 GOOGLE_TTS_API_KEY
 LINE_CHANNEL_ACCESS_TOKEN
 LINE_USER_ID
 PWA_URL
+DAILY_QUOTE_COUNT
 ```
 
-`createDailyVoice` を時間主導トリガーで毎朝実行すると、AI語りかけ、原文MP3、AI MP3、LINE通知を生成します。`doPost` ではサイトからの名言追加も受け取ります。
+`createDailyVoice` を時間主導トリガーで毎朝実行すると、その日の名言セット選定、AI語りかけ生成、原文MP3、AI MP3、LINE通知までまとめて実行します。`doPost` ではサイトからの名言追加も受け取ります。
+
+最初に Apps Script で試す順番はこれです。
+
+1. `createDailyVoice()` を手動実行する
+2. シートに `DailyVoices` タブが増えることを確認する
+3. `Quotes` タブの対象行に `quoteAudioUrl` / `aiMessage` / `aiAudioUrl` / `generatedDate` が入ることを確認する
+4. `sendTestLineMessage_()` を実行して、LINE 通知が届くか確認する
+5. 問題なければ `installDailyTrigger(7)` のように実行して毎朝トリガーを作る
+
+補足:
+
+- `DAILY_QUOTE_COUNT` は毎朝選ぶ名言数です。未設定なら `6`
+- `doGet?action=today` でその日の生成済みデータを返します
+- `DailyVoices` タブに日ごとの生成結果と通知状態が残ります
 
 ## PWAからSheetsを読む
 
@@ -61,4 +76,5 @@ location.reload();
 
 - LINE Notifyは終了済みなので、LINE Messaging APIを使います。
 - APIキーはフロントエンドに置かず、GASのScript Propertiesに保存します。
+- AI語りかけ生成は Gemini Flash Preview を使う前提です。
 - 本番ではGAS Webアプリのアクセス範囲、Driveファイル共有、LINEの送信先を必ず確認してください。
