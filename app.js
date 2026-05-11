@@ -76,6 +76,8 @@ const FALLBACK_QUOTES = [
 const CONFIG = {
   sheetsEndpoint: localStorage.getItem("voiceShelfEndpoint") || "",
   sheetId: "1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8",
+  pushPublicKeyEndpoint: "/api/push-public-key",
+  pushSubscribeEndpoint: "/api/push-subscribe",
   speechRate: 0.88
 };
 
@@ -119,11 +121,14 @@ const els = {
   quoteTags: document.querySelector("#quoteTags"),
   quoteSource: document.querySelector("#quoteSource"),
   formStatus: document.querySelector("#formStatus"),
-  submitQuoteButton: document.querySelector("#submitQuoteButton")
+  submitQuoteButton: document.querySelector("#submitQuoteButton"),
+  notifyButton: document.querySelector("#notifyButton"),
+  notifyStatus: document.querySelector("#notifyStatus")
 };
 
 const audio = new Audio();
 let progressTimer = 0;
+let swRegistration = null;
 
 function normalizeQuote(row, index) {
   const tags = Array.isArray(row.tags)
@@ -463,6 +468,7 @@ function bindEvents() {
   window.addEventListener("scroll", syncFloatingPlayerVisibility, { passive: true });
 
   els.quoteForm.addEventListener("submit", handleQuoteSubmit);
+  els.notifyButton.addEventListener("click", enableNotifications);
 }
 
 function syncFloatingPlayerVisibility() {
@@ -540,7 +546,7 @@ async function saveQuoteToSheets({ text, tags, source }) {
 
 async function boot() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js");
+    swRegistration = await navigator.serviceWorker.register("./service-worker.js");
   }
 
   await loadQuotes();
@@ -550,6 +556,103 @@ async function boot() {
   updateNowPlaying();
   bindEvents();
   syncFloatingPlayerVisibility();
+  await refreshNotificationState();
 }
 
 boot();
+
+async function refreshNotificationState() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+    els.notifyButton.disabled = true;
+    els.notifyStatus.textContent = "このブラウザでは通知を使えません。";
+    return;
+  }
+
+  if (!window.isSecureContext) {
+    els.notifyButton.disabled = true;
+    els.notifyStatus.textContent = "通知は https の公開サイトで有効になります。";
+    return;
+  }
+
+  if (!swRegistration) {
+    els.notifyButton.disabled = true;
+    els.notifyStatus.textContent = "通知の準備に失敗しました。";
+    return;
+  }
+
+  const existing = await swRegistration.pushManager.getSubscription();
+  if (existing) {
+    els.notifyButton.textContent = "通知を有効化済み";
+    els.notifyButton.disabled = true;
+    els.notifyStatus.textContent = "毎朝の新しい音声が Android に届く状態です。";
+    return;
+  }
+
+  els.notifyButton.disabled = false;
+  if (Notification.permission === "denied") {
+    els.notifyStatus.textContent = "ブラウザ設定で通知がブロックされています。";
+    return;
+  }
+
+  els.notifyStatus.textContent = "Android のホーム画面追加後に通知を有効化できます。";
+}
+
+async function enableNotifications() {
+  if (!swRegistration) return;
+
+  els.notifyButton.disabled = true;
+  els.notifyStatus.textContent = "通知の準備をしています。";
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      els.notifyStatus.textContent = "通知の許可が必要です。";
+      els.notifyButton.disabled = false;
+      return;
+    }
+
+    const keyResponse = await fetch(CONFIG.pushPublicKeyEndpoint, { cache: "no-store" });
+    if (!keyResponse.ok) throw new Error(`push key status ${keyResponse.status}`);
+    const keyPayload = await keyResponse.json();
+    const publicKey = keyPayload.publicKey;
+    if (!publicKey) throw new Error("missing public key");
+
+    const subscription = await swRegistration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey)
+    });
+
+    const saveResponse = await fetch(CONFIG.pushSubscribeEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        subscription,
+        userAgent: navigator.userAgent
+      })
+    });
+
+    if (!saveResponse.ok) throw new Error(`subscribe status ${saveResponse.status}`);
+
+    els.notifyButton.textContent = "通知を有効化済み";
+    els.notifyStatus.textContent = "毎朝の新しい音声が Android に届く状態です。";
+  } catch (error) {
+    console.warn(error);
+    els.notifyButton.disabled = false;
+    els.notifyStatus.textContent = "通知設定に失敗しました。GAS と Vercel の設定を確認してください。";
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let index = 0; index < rawData.length; index += 1) {
+    outputArray[index] = rawData.charCodeAt(index);
+  }
+
+  return outputArray;
+}

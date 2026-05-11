@@ -307,7 +307,8 @@ input[type="range"] {
 
 .segment,
 .queue-button,
-.listen-button {
+.listen-button,
+.notify-button {
   min-height: 38px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -318,10 +319,18 @@ input[type="range"] {
 }
 
 .segment.is-active,
-.queue-button {
+.queue-button,
+.notify-button {
   border-color: rgba(49, 90, 79, 0.2);
   background: var(--green);
   color: #fffaf0;
+}
+
+.notify-status {
+  margin: 0;
+  color: var(--muted);
+  font-family: "Yu Gothic", "Hiragino Sans", sans-serif;
+  font-size: 0.82rem;
 }
 
 .select-wrap,

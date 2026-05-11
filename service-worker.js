@@ -1,4 +1,4 @@
-const CACHE_NAME = "voice-shelf-v2";
+const CACHE_NAME = "voice-shelf-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -33,6 +33,46 @@ self.addEventListener("fetch", (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return response;
       });
+    })
+  );
+});
+
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  const payload = event.data.json();
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "Voice Shelf", {
+      body: payload.body || "今日の音声が届きました。",
+      icon: "./assets/icon.svg",
+      badge: "./assets/icon.svg",
+      data: {
+        url: payload.url || "/",
+      },
+      tag: payload.tag || "voice-shelf-daily",
+      renotify: true,
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const destination = (event.notification.data && event.notification.data.url) || "/";
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) {
+          client.navigate(destination);
+          return client.focus();
+        }
+      }
+
+      if (clients.openWindow) {
+        return clients.openWindow(destination);
+      }
+
+      return undefined;
     })
   );
 });

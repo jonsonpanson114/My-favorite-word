@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  },
   "scripts": {
     "start": "node scripts/local-server.mjs",
-    "check": "node --check app.js && node --check scripts/local-server.mjs"
+    "check": "node --check app.js && node --check scripts/local-server.mjs && node --check api/push-public-key.js && node --check api/push-subscribe.js && node --check api/push-daily.js"
   }
 }

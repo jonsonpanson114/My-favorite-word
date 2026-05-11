@@ -1,5 +1,6 @@
 const SHEET_NAME = 'Quotes';
 const DAILY_SHEET_NAME = 'DailyVoices';
+const SUBSCRIPTION_SHEET_NAME = 'PushSubscriptions';
 const OUTPUT_FOLDER_NAME = 'Voice Shelf Audio';
 const GEMINI_MODEL = 'gemini-3-flash-preview';
 const GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Achernar';
@@ -28,8 +29,12 @@ function doPost(e) {
     }));
   }
 
-  if (action === 'testLine') {
-    return jsonOutput_(sendTestLineMessage_());
+  if (action === 'subscribe') {
+    return jsonOutput_(upsertPushSubscription_((e && e.parameter) || {}));
+  }
+
+  if (action === 'testPush') {
+    return jsonOutput_(sendTestPush_());
   }
 
   return jsonOutput_({ ok: false, error: 'Unsupported action' });
@@ -74,17 +79,15 @@ function createDailyVoice(options) {
   });
 
   writeDailyResult_(dailyQuotes, dailyVoice);
-  const lineResult = pushLineMessage_(dailyQuotes, dailyVoice);
-  if (lineResult.ok) {
-    markLineNotified_(today);
-  }
+  const pushResult = sendDailyPush_(dailyQuotes, dailyVoice);
+  if (pushResult.ok && pushResult.sent > 0) markPushNotified_(today);
 
   return {
     ok: true,
     date: today,
     dailyVoice: getDailyVoiceByDate_(today),
     quotesSelected: dailyQuotes.length,
-    line: lineResult
+    push: pushResult
   };
 }
 
@@ -110,7 +113,7 @@ function createDailyVoiceTrigger() {
   return createDailyVoice({ force: false });
 }
 
-function sendTestLineMessage_() {
+function sendTestPush_() {
   const today = formatDate_(new Date());
   const existing = getDailyVoiceByDate_(today);
   if (!existing) {
@@ -118,8 +121,8 @@ function sendTestLineMessage_() {
   }
 
   const quotes = getQuoteRows_().filter((quote) => existing.quoteIds.indexOf(quote.id) !== -1);
-  const lineResult = pushLineMessage_(quotes, existing, true);
-  return { ok: true, line: lineResult };
+  const pushResult = sendDailyPush_(quotes, existing, true);
+  return { ok: true, push: pushResult };
 }
 
 function getTodayVoice_() {
@@ -173,6 +176,13 @@ function getDailySheet_() {
   const sheet = spreadsheet.getSheetByName(DAILY_SHEET_NAME);
   if (sheet) return sheet;
   return spreadsheet.insertSheet(DAILY_SHEET_NAME);
+}
+
+function getSubscriptionSheet_() {
+  const spreadsheet = SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
+  const sheet = spreadsheet.getSheetByName(SUBSCRIPTION_SHEET_NAME);
+  if (sheet) return sheet;
+  return spreadsheet.insertSheet(SUBSCRIPTION_SHEET_NAME);
 }
 
 function generateAiMessage_(quotes, theme) {
@@ -280,38 +290,116 @@ function writeDailyResult_(quotes, dailyVoice) {
   });
 }
 
-function pushLineMessage_(quotes, dailyVoice, isTest) {
-  const token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
-  const to = PropertiesService.getScriptProperties().getProperty('LINE_USER_ID');
+function sendDailyPush_(quotes, dailyVoice, isTest) {
+  const webhookUrl = PropertiesService.getScriptProperties().getProperty('PUSH_WEBHOOK_URL');
+  const sharedSecret = PropertiesService.getScriptProperties().getProperty('PUSH_WEBHOOK_SECRET');
   const appUrl = PropertiesService.getScriptProperties().getProperty('PWA_URL') || '';
-  if (!token || !to) {
-    return { ok: false, skipped: true, reason: 'Missing LINE settings' };
+  if (!webhookUrl || !sharedSecret) {
+    return { ok: false, skipped: true, reason: 'Missing push webhook settings' };
+  }
+
+  const subscriptions = getPushSubscriptions_();
+  if (!subscriptions.length) {
+    return { ok: false, skipped: true, reason: 'No push subscriptions' };
   }
 
   const preview = quotes.slice(0, 2).map((quote) => `・${quote.text}`).join('\n');
-  const heading = isTest ? 'テスト通知です。' : '今日の声ができました。';
-  const message = [
-    heading,
-    '',
-    `テーマ: ${dailyVoice.theme}`,
+  const title = isTest ? 'Voice Shelf テスト通知' : '今日の声が届きました';
+  const body = [
+    `${dailyVoice.theme}`,
     preview,
-    '',
-    `${truncate_(dailyVoice.aiMessage, 120)}`,
-    appUrl
-  ].join('\n');
+    truncate_(dailyVoice.aiMessage, 88),
+  ].join(' / ');
 
-  const response = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+  const response = UrlFetchApp.fetch(webhookUrl, {
     method: 'post',
     contentType: 'application/json',
-    headers: { Authorization: `Bearer ${token}` },
     payload: JSON.stringify({
-      to: to,
-      messages: [{ type: 'text', text: message }]
+      secret: sharedSecret,
+      title: title,
+      body: body,
+      url: appUrl,
+      tag: `voice-shelf-${dailyVoice.date}`,
+      subscriptions: subscriptions
     }),
     muteHttpExceptions: true
   });
 
-  return { ok: true, status: response.getResponseCode() };
+  const responseBody = response.getContentText();
+  if (!responseBody) {
+    return { ok: false, status: response.getResponseCode(), error: 'Empty push response' };
+  }
+
+  const parsed = JSON.parse(responseBody);
+  return {
+    ok: response.getResponseCode() >= 200 && response.getResponseCode() < 300,
+    status: response.getResponseCode(),
+    sent: Number(parsed.sent || 0),
+    failed: Number(parsed.failed || 0)
+  };
+}
+
+function getPushSubscriptions_() {
+  const sheet = getSubscriptionSheet_();
+  ensureSubscriptionHeaders_(sheet);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const headers = values[0].map(String);
+  const endpointIndex = headers.indexOf('endpoint');
+  const subscriptionIndex = headers.indexOf('subscriptionJson');
+
+  return values
+    .slice(1)
+    .filter((row) => row[endpointIndex] && row[subscriptionIndex])
+    .map((row) => JSON.parse(String(row[subscriptionIndex])));
+}
+
+function upsertPushSubscription_(params) {
+  const sharedSecret = PropertiesService.getScriptProperties().getProperty('PUSH_WEBHOOK_SECRET');
+  if (sharedSecret && String(params.secret || '') !== sharedSecret) {
+    return { ok: false, error: 'Unauthorized' };
+  }
+
+  const endpoint = String(params.endpoint || '').trim();
+  const subscriptionJson = String(params.subscription || '').trim();
+  const userAgent = String(params.userAgent || '').trim();
+  if (!endpoint || !subscriptionJson) {
+    return { ok: false, error: 'Missing subscription data' };
+  }
+
+  const sheet = getSubscriptionSheet_();
+  ensureSubscriptionHeaders_(sheet);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const endpointIndex = headers.indexOf('endpoint');
+  const rowIndex = values.slice(1).findIndex((row) => String(row[endpointIndex]) === endpoint);
+  const now = new Date();
+  const rowValues = [endpoint, subscriptionJson, userAgent, now, now];
+
+  if (rowIndex === -1) {
+    sheet.appendRow(rowValues);
+  } else {
+    sheet.getRange(rowIndex + 2, 1, 1, rowValues.length).setValues([rowValues]);
+  }
+
+  return { ok: true };
+}
+
+function ensureSubscriptionHeaders_(sheet) {
+  if (sheet.getLastRow() > 0) return;
+  sheet.appendRow(['endpoint', 'subscriptionJson', 'userAgent', 'createdAt', 'lastSeenAt']);
+}
+
+function markPushNotified_(date) {
+  const sheet = getDailySheet_();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const dateIndex = headers.indexOf('date');
+  const notifiedIndex = headers.indexOf('pushNotifiedAt') + 1;
+  const rowIndex = values.slice(1).findIndex((row) => String(row[dateIndex]) === date);
+  if (rowIndex === -1 || !notifiedIndex) return;
+  sheet.getRange(rowIndex + 2, notifiedIndex).setValue(new Date());
 }
 
 function getOutputFolder_() {
@@ -343,7 +431,7 @@ function ensureQuoteHeaders_(sheet) {
 
 function ensureDailyHeaders_(sheet) {
   if (sheet.getLastRow() > 0) return;
-  sheet.appendRow(['date', 'theme', 'quoteIds', 'aiMessage', 'quoteAudioUrl', 'aiAudioUrl', 'appUrl', 'status', 'lineNotifiedAt']);
+  sheet.appendRow(['date', 'theme', 'quoteIds', 'aiMessage', 'quoteAudioUrl', 'aiAudioUrl', 'appUrl', 'status', 'pushNotifiedAt']);
 }
 
 function pickDailyQuotes_(quotes, dateKey) {
@@ -434,19 +522,8 @@ function getDailyVoiceByDate_(date) {
     aiAudioUrl: String(item.aiAudioUrl || ''),
     appUrl: String(item.appUrl || ''),
     status: String(item.status || ''),
-    lineNotifiedAt: String(item.lineNotifiedAt || '')
+    pushNotifiedAt: String(item.pushNotifiedAt || '')
   };
-}
-
-function markLineNotified_(date) {
-  const sheet = getDailySheet_();
-  const values = sheet.getDataRange().getValues();
-  const headers = values[0].map(String);
-  const dateIndex = headers.indexOf('date');
-  const notifiedIndex = headers.indexOf('lineNotifiedAt') + 1;
-  const rowIndex = values.slice(1).findIndex((row) => String(row[dateIndex]) === date);
-  if (rowIndex === -1 || !notifiedIndex) return;
-  sheet.getRange(rowIndex + 2, notifiedIndex).setValue(new Date());
 }
 
 function getDailyQuoteCount_() {
