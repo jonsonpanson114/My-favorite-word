@@ -73,8 +73,11 @@ const FALLBACK_QUOTES = [
   }
 ];
 
+const DEFAULT_GAS_ENDPOINT =
+  "https://script.google.com/macros/s/AKfycbybOvd5tQZAavAIrsY2xHQRZk9KCjzeSJSEi054KV8Sm34vbdV8VlYmMZJAs3LgDVMt/exec";
+
 const CONFIG = {
-  sheetsEndpoint: localStorage.getItem("voiceShelfEndpoint") || "",
+  sheetsEndpoint: localStorage.getItem("voiceShelfEndpoint") || DEFAULT_GAS_ENDPOINT,
   sheetId: "1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8",
   pushPublicKeyEndpoint: "/api/push-public-key",
   pushSubscribeEndpoint: "/api/push-subscribe",

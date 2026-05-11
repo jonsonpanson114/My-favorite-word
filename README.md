@@ -81,10 +81,16 @@ GAS_WEB_APP_URL
 
 ## PWAからSheetsを読む
 
-GASを Web アプリとして公開し、返ってくるURLをブラウザの DevTools で次のように保存します。
+今の GAS Web アプリ URL はこれです。
+
+```text
+https://script.google.com/macros/s/AKfycbybOvd5tQZAavAIrsY2xHQRZk9KCjzeSJSEi054KV8Sm34vbdV8VlYmMZJAs3LgDVMt/exec
+```
+
+アプリ本体には既定値として入れてあります。必要ならブラウザの DevTools で上書きもできます。
 
 ```js
-localStorage.setItem("voiceShelfEndpoint", "https://script.google.com/macros/s/XXXXX/exec");
+localStorage.setItem("voiceShelfEndpoint", "https://script.google.com/macros/s/AKfycbybOvd5tQZAavAIrsY2xHQRZk9KCjzeSJSEi054KV8Sm34vbdV8VlYmMZJAs3LgDVMt/exec");
 location.reload();
 ```
 
