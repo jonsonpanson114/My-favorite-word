@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f3efe6" />
+    <title>Voice Shelf | 名言音声PWA</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./assets/icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="app-shell hero">
+      <nav class="topbar" aria-label="アプリ操作">
+        <a class="brand" href="./index.html" aria-label="Voice Shelf home">
+          <img src="./assets/icon.svg" alt="" />
+          <span>Voice Shelf</span>
+        </a>
+        <div class="top-actions">
+          <button class="icon-button" id="syncButton" type="button" title="Google Sheetsから同期" aria-label="Google Sheetsから同期">
+            <span aria-hidden="true">↻</span>
+          </button>
+          <button class="icon-button" id="installButton" type="button" title="ホーム画面に追加" aria-label="ホーム画面に追加" hidden>
+            <span aria-hidden="true">＋</span>
+          </button>
+        </div>
+      </nav>
+
+      <section class="today">
+        <div class="today-copy">
+          <p class="eyebrow">今日の声</p>
+          <h1>名言を、あなたに届く音声へ。</h1>
+          <p>
+            原文アファメーションと、穏やかなAI語りかけを続けて聴ける
+            自分専用の名言ラジオ棚です。
+          </p>
+        </div>
+
+        <div class="studio-panel" aria-label="今日の音声プレイヤー">
+          <div class="cassette-art">
+            <img src="./assets/sound-shelf.svg" alt="音声棚の抽象イラスト" />
+          </div>
+          <div class="now-line">
+            <span id="nowMode">原文アファメーション</span>
+            <strong id="nowTitle">朝の集中セット</strong>
+          </div>
+          <div class="meter" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <div class="controls">
+            <button class="control-button" id="prevButton" type="button" title="前へ" aria-label="前へ">‹</button>
+            <button class="play-button" id="playButton" type="button" aria-label="再生">▶</button>
+            <button class="control-button" id="nextButton" type="button" title="次へ" aria-label="次へ">›</button>
+          </div>
+          <div class="progress-wrap" aria-label="再生位置">
+            <span id="elapsed">0:00</span>
+            <input id="progress" type="range" min="0" max="100" value="0" aria-label="再生位置" />
+            <span id="duration">0:00</span>
+          </div>
+        </div>
+      </section>
+    </header>
+
+    <main class="app-shell workspace">
+      <section class="tool-strip" aria-label="音声モードとフィルター">
+        <div class="segmented" role="group" aria-label="再生モード">
+          <button class="segment is-active" data-mode="both" type="button">両方</button>
+          <button class="segment" data-mode="quote" type="button">原文だけ</button>
+          <button class="segment" data-mode="ai" type="button">AIだけ</button>
+        </div>
+        <label class="select-wrap">
+          <span>テーマ</span>
+          <select id="themeSelect">
+            <option value="all">すべて</option>
+          </select>
+        </label>
+        <label class="toggle">
+          <input id="favoritesOnly" type="checkbox" />
+          <span>お気に入り</span>
+        </label>
+      </section>
+
+      <section class="daily-brief" aria-labelledby="briefTitle">
+        <div>
+          <p class="eyebrow">AI語りかけ</p>
+          <h2 id="briefTitle">穏やかな伴走者からの今日の一言</h2>
+        </div>
+        <p id="aiBrief">
+          今日は、急がずに整える日です。大きく変えようとせず、いま選べる一歩を丁寧に選んでください。
+        </p>
+      </section>
+
+      <section class="quote-grid" id="quoteGrid" aria-label="名言一覧"></section>
+    </main>
+
+    <footer class="mini-player" aria-label="ミニプレイヤー">
+      <div class="mini-copy">
+        <span id="miniMode">待機中</span>
+        <strong id="miniTitle">今日の声を再生できます</strong>
+      </div>
+      <div class="mini-actions">
+        <button class="control-button" id="miniPrevButton" type="button" title="前へ" aria-label="前へ">‹</button>
+        <button class="play-button compact" id="miniPlayButton" type="button" aria-label="再生">▶</button>
+        <button class="control-button" id="miniNextButton" type="button" title="次へ" aria-label="次へ">›</button>
+      </div>
+    </footer>
+
+    <template id="quoteTemplate">
+      <article class="quote-card">
+        <div class="card-top">
+          <span class="tag"></span>
+          <button class="favorite-button" type="button" aria-label="お気に入り">☆</button>
+        </div>
+        <p class="quote-text"></p>
+        <p class="quote-source"></p>
+        <div class="card-actions">
+          <button class="queue-button" type="button">キューに追加</button>
+          <button class="listen-button" type="button">この名言から聴く</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

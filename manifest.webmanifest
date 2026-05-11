@@ -1,0 +1,17 @@
+{
+  "name": "Voice Shelf | 名言音声PWA",
+  "short_name": "Voice Shelf",
+  "description": "自分の名言集を原文アファメーションとAI語りかけで聴くPWA。",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3efe6",
+  "theme_color": "#315a4f",
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
