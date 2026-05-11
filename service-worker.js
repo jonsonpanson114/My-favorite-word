@@ -1,4 +1,4 @@
-const CACHE_NAME = "voice-shelf-v1";
+const CACHE_NAME = "voice-shelf-v2";
 const ASSETS = [
   "./",
   "./index.html",

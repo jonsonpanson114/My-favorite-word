@@ -87,7 +87,8 @@ const state = {
   queue: [],
   cursor: 0,
   isPlaying: false,
-  deferredInstallPrompt: null
+  deferredInstallPrompt: null,
+  showFloatingPlayer: false
 };
 
 const els = {
@@ -286,6 +287,7 @@ function setPlaying(isPlaying) {
   document.body.classList.toggle("is-playing", isPlaying);
   els.playButton.textContent = isPlaying ? "Ⅱ" : "▶";
   els.miniPlayButton.textContent = isPlaying ? "Ⅱ" : "▶";
+  syncFloatingPlayerVisibility();
 }
 
 async function playCurrent() {
@@ -436,6 +438,15 @@ function bindEvents() {
     state.deferredInstallPrompt = null;
     els.installButton.hidden = true;
   });
+
+  window.addEventListener("scroll", syncFloatingPlayerVisibility, { passive: true });
+}
+
+function syncFloatingPlayerVisibility() {
+  const hero = document.querySelector(".hero");
+  const threshold = hero ? hero.offsetHeight * 0.72 : 480;
+  state.showFloatingPlayer = state.isPlaying || window.scrollY > threshold;
+  document.body.classList.toggle("has-floating-player", state.showFloatingPlayer);
 }
 
 async function boot() {
@@ -449,6 +460,7 @@ async function boot() {
   renderQuotes();
   updateNowPlaying();
   bindEvents();
+  syncFloatingPlayerVisibility();
 }
 
 boot();
