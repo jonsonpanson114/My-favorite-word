@@ -2,10 +2,23 @@ const SHEET_NAME = 'Quotes';
 const OUTPUT_FOLDER_NAME = 'Voice Shelf Audio';
 const OPENAI_MODEL = 'gpt-4.1-mini';
 const GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Achernar';
+const DEFAULT_SPREADSHEET_ID = '1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8';
 
 function doGet() {
   const rows = getQuoteRows_();
   return ContentService.createTextOutput(JSON.stringify({ quotes: rows }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  const action = String((e && e.parameter && e.parameter.action) || '');
+  if (action === 'addQuote') {
+    const result = appendQuote_((e && e.parameter) || {});
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Unsupported action' }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -29,6 +42,7 @@ function createDailyVoice() {
 
 function getQuoteRows_() {
   const sheet = getSheet_();
+  ensureHeaders_(sheet);
   const values = sheet.getDataRange().getValues();
   const headers = values.shift().map(String);
 
@@ -56,7 +70,10 @@ function getQuoteRows_() {
 }
 
 function getSheet_() {
-  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const spreadsheet = SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME);
+  if (sheet) return sheet;
+  return spreadsheet.insertSheet(SHEET_NAME);
 }
 
 function generateAiMessage_(quotes) {
@@ -182,4 +199,26 @@ function escapeXml_(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+function appendQuote_(params) {
+  const sheet = getSheet_();
+  ensureHeaders_(sheet);
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const id = Utilities.getUuid();
+  const text = String(params.text || '').trim();
+  const tags = String(params.tags || '').trim();
+  const source = String(params.source || 'サイト入力').trim();
+
+  if (!text) {
+    return { ok: false, error: 'Text is required' };
+  }
+
+  sheet.appendRow([id, text, tags, source, true, '', '', '', today]);
+  return { ok: true, id: id };
+}
+
+function ensureHeaders_(sheet) {
+  if (sheet.getLastRow() > 0) return;
+  sheet.appendRow(['id', 'text', 'tags', 'source', 'enabled', 'quoteAudioUrl', 'aiMessage', 'aiAudioUrl', 'generatedDate']);
 }

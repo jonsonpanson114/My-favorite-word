@@ -75,6 +75,7 @@ const FALLBACK_QUOTES = [
 
 const CONFIG = {
   sheetsEndpoint: localStorage.getItem("voiceShelfEndpoint") || "",
+  sheetId: "1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8",
   speechRate: 0.88
 };
 
@@ -112,7 +113,13 @@ const els = {
   elapsed: document.querySelector("#elapsed"),
   duration: document.querySelector("#duration"),
   syncButton: document.querySelector("#syncButton"),
-  installButton: document.querySelector("#installButton")
+  installButton: document.querySelector("#installButton"),
+  quoteForm: document.querySelector("#quoteForm"),
+  quoteText: document.querySelector("#quoteText"),
+  quoteTags: document.querySelector("#quoteTags"),
+  quoteSource: document.querySelector("#quoteSource"),
+  formStatus: document.querySelector("#formStatus"),
+  submitQuoteButton: document.querySelector("#submitQuoteButton")
 };
 
 const audio = new Audio();
@@ -136,6 +143,20 @@ function normalizeQuote(row, index) {
     aiMessage: String(row.aiMessage || row.aiText || ""),
     aiAudioUrl: String(row.aiAudioUrl || ""),
     generatedDate: String(row.generatedDate || "")
+  };
+}
+
+function createLocalQuote({ text, tags, source }) {
+  return {
+    id: `local-${Date.now()}`,
+    text,
+    source: source || "サイト入力",
+    tags,
+    enabled: true,
+    quoteAudioUrl: "",
+    aiMessage: `今日はこの言葉を、自分の芯を整えるための合図として受け取ってください。${text}`,
+    aiAudioUrl: "",
+    generatedDate: new Date().toISOString().slice(0, 10)
   };
 }
 
@@ -440,6 +461,8 @@ function bindEvents() {
   });
 
   window.addEventListener("scroll", syncFloatingPlayerVisibility, { passive: true });
+
+  els.quoteForm.addEventListener("submit", handleQuoteSubmit);
 }
 
 function syncFloatingPlayerVisibility() {
@@ -447,6 +470,72 @@ function syncFloatingPlayerVisibility() {
   const threshold = hero ? hero.offsetHeight * 0.72 : 480;
   state.showFloatingPlayer = state.isPlaying || window.scrollY > threshold;
   document.body.classList.toggle("has-floating-player", state.showFloatingPlayer);
+}
+
+function setFormStatus(message) {
+  els.formStatus.textContent = message;
+}
+
+async function handleQuoteSubmit(event) {
+  event.preventDefault();
+
+  const text = els.quoteText.value.trim();
+  const tags = els.quoteTags.value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  const source = els.quoteSource.value.trim();
+
+  if (!text) {
+    setFormStatus("名言を入力すると追加できます。");
+    els.quoteText.focus();
+    return;
+  }
+
+  const localQuote = createLocalQuote({ text, tags, source });
+  state.quotes = [localQuote, ...state.quotes];
+  buildQueue(localQuote.id);
+  renderQuotes();
+  updateNowPlaying();
+
+  els.quoteForm.reset();
+  setFormStatus("一覧に追加しました。保存先への反映も進めています。");
+
+  if (!CONFIG.sheetsEndpoint) {
+    setFormStatus("一覧に追加しました。GAS の URL を設定すると Google Sheets にも保存されます。");
+    return;
+  }
+
+  els.submitQuoteButton.disabled = true;
+
+  try {
+    await saveQuoteToSheets({ text, tags, source });
+    setFormStatus("一覧に追加して、Google Sheets への保存も送信しました。");
+  } catch (error) {
+    console.warn(error);
+    setFormStatus("一覧には追加しました。Google Sheets への保存はあとで接続確認が必要です。");
+  } finally {
+    els.submitQuoteButton.disabled = false;
+  }
+}
+
+async function saveQuoteToSheets({ text, tags, source }) {
+  const payload = new URLSearchParams({
+    action: "addQuote",
+    sheetId: CONFIG.sheetId,
+    text,
+    tags: tags.join(", "),
+    source
+  });
+
+  await fetch(CONFIG.sheetsEndpoint, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+    },
+    body: payload.toString()
+  });
 }
 
 async function boot() {

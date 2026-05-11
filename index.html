@@ -92,6 +92,37 @@
         </p>
       </section>
 
+      <section class="entry-band" aria-labelledby="entryTitle">
+        <div class="entry-copy">
+          <p class="eyebrow">言葉を足す</p>
+          <h2 id="entryTitle">サイトから名言を追加できます。</h2>
+          <p>
+            思いついた言葉をその場で残して、あとから原文アファメーションとAI語りかけにつなげます。
+          </p>
+        </div>
+
+        <form class="entry-form" id="quoteForm">
+          <label class="field">
+            <span>名言</span>
+            <textarea id="quoteText" name="text" rows="4" maxlength="240" placeholder="焦らなくていい。今日できる一歩を、静かに積み重ねる。"></textarea>
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span>タグ</span>
+              <input id="quoteTags" name="tags" type="text" placeholder="朝, 継続, 集中" />
+            </label>
+            <label class="field">
+              <span>出典</span>
+              <input id="quoteSource" name="source" type="text" placeholder="自作メモ" />
+            </label>
+          </div>
+          <div class="form-actions">
+            <p class="form-note" id="formStatus">入力した名言はこの場で一覧に反映されます。</p>
+            <button class="submit-button" id="submitQuoteButton" type="submit">名言を追加</button>
+          </div>
+        </form>
+      </section>
+
       <section class="quote-grid" id="quoteGrid" aria-label="名言一覧"></section>
     </main>
 
