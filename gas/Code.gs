@@ -3,7 +3,8 @@ const DAILY_SHEET_NAME = 'DailyVoices';
 const SUBSCRIPTION_SHEET_NAME = 'PushSubscriptions';
 const OUTPUT_FOLDER_NAME = 'Voice Shelf Audio';
 const GEMINI_MODEL = 'gemini-3-flash-preview';
-const GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Achernar';
+const DEFAULT_GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Achernar';
+const DEFAULT_GOOGLE_TTS_RATE = 0.92;
 const DEFAULT_SPREADSHEET_ID = '1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8';
 const DEFAULT_DAILY_QUOTE_COUNT = 6;
 
@@ -59,12 +60,12 @@ function createDailyVoice(options) {
   const dailyQuotes = pickDailyQuotes_(quotes, today);
   const theme = buildTheme_(dailyQuotes);
   const aiMessage = generateAiMessage_(dailyQuotes, theme);
-  const quoteSsml = buildQuoteSsml_(dailyQuotes);
-  const aiSsml = buildAiSsml_(aiMessage);
+  const quoteNarration = buildQuoteNarrationSsml_(dailyQuotes);
+  const aiNarration = buildAiNarrationSsml_(aiMessage, theme);
 
   const folder = getOutputFolder_();
-  const quoteUrl = synthesizeToDrive_(quoteSsml, `quote-${today}.mp3`, folder);
-  const aiUrl = synthesizeToDrive_(aiSsml, `ai-${today}.mp3`, folder);
+  const quoteUrl = synthesizeToDrive_(quoteNarration, `quote-${today}.mp3`, folder);
+  const aiUrl = synthesizeToDrive_(aiNarration, `ai-${today}.mp3`, folder);
   const appUrl = PropertiesService.getScriptProperties().getProperty('PWA_URL') || '';
 
   const dailyVoice = upsertDailyVoiceRow_({
@@ -196,7 +197,7 @@ function generateAiMessage_(quotes, theme) {
     systemInstruction: {
       parts: [
         {
-          text: 'あなたは穏やかな伴走者です。名言の原文を長く引用せず、今日の行動や考え方に変換して、自然な日本語で短く語りかけます。'
+          text: 'あなたは穏やかな伴走者です。音声で自然に読まれる文章を書きます。名言の原文を長く引用せず、短い文で、やわらかく、会話のような日本語にしてください。箇条書きは使わず、1文を長くしすぎないでください。'
         }
       ]
     },
@@ -204,7 +205,7 @@ function generateAiMessage_(quotes, theme) {
       {
         parts: [
           {
-            text: `今日のテーマは「${theme}」です。次の名言集をもとに、60〜120秒で読めるAI語りかけ文を作ってください。\n${content}`
+            text: `今日のテーマは「${theme}」です。次の名言集をもとに、60〜120秒で読めるAI語りかけ文を作ってください。朝に耳で聴いて心地よいことを最優先にしてください。短い文で、少し間が取りやすい自然な日本語にしてください。\n${content}`
           }
         ]
       }
@@ -231,11 +232,17 @@ function generateAiMessage_(quotes, theme) {
 function synthesizeToDrive_(ssml, fileName, folder) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('GOOGLE_TTS_API_KEY');
   if (!apiKey) return '';
+  const voiceName =
+    PropertiesService.getScriptProperties().getProperty('GOOGLE_TTS_VOICE') || DEFAULT_GOOGLE_TTS_VOICE;
+  const speakingRate = getTtsSpeakingRate_();
 
   const payload = {
     input: { ssml: ssml },
-    voice: { languageCode: 'ja-JP', name: GOOGLE_TTS_VOICE },
-    audioConfig: { audioEncoding: 'MP3', speakingRate: 0.92, pitch: -1.2 }
+    voice: { languageCode: 'ja-JP', name: voiceName },
+    audioConfig: {
+      audioEncoding: 'MP3',
+      speakingRate: speakingRate
+    }
   };
 
   const response = UrlFetchApp.fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
@@ -246,7 +253,10 @@ function synthesizeToDrive_(ssml, fileName, folder) {
   });
 
   const json = JSON.parse(response.getContentText());
-  if (!json.audioContent) return '';
+  if (!json.audioContent) {
+    Logger.log(JSON.stringify({ ttsError: json.error || 'No audioContent', fileName: fileName }));
+    return '';
+  }
 
   const existingFiles = folder.getFilesByName(fileName);
   while (existingFiles.hasNext()) {
@@ -259,13 +269,28 @@ function synthesizeToDrive_(ssml, fileName, folder) {
   return `https://drive.google.com/uc?export=download&id=${file.getId()}`;
 }
 
-function buildQuoteSsml_(quotes) {
-  const lines = quotes.map((quote) => `${escapeXml_(quote.text)}<break time="900ms"/>`).join('');
-  return `<speak>${lines}</speak>`;
+function buildQuoteNarrationSsml_(quotes) {
+  const sections = quotes.map((quote) => {
+    const sentences = splitIntoSpeechSentences_(quote.text);
+    if (!sentences.length) return '';
+    const body = sentences
+      .map((sentence) => `<s>${escapeXml_(sentence)}</s>`)
+      .join('<break time="650ms"/>');
+    return `<p><prosody rate="92%">${body}</prosody></p>`;
+  }).filter(Boolean);
+
+  return `<speak>${sections.join('<break time="1200ms"/>')}</speak>`;
 }
 
-function buildAiSsml_(message) {
-  return `<speak>${escapeXml_(message)}<break time="600ms"/></speak>`;
+function buildAiNarrationSsml_(message, theme) {
+  const normalized = normalizeNarrationText_(message);
+  const sentences = splitIntoSpeechSentences_(normalized);
+  const intro = [
+    `<p><s>おはようございます。</s><break time="450ms"/><s>今日のテーマは、${escapeXml_(theme)}です。</s></p>`
+  ];
+  const body = sentences.map((sentence) => `<s>${escapeXml_(sentence)}</s>`).join('<break time="500ms"/>');
+  const outro = '<p><break time="650ms"/><s>では、今日も無理なく、ひとつずつ進めていきましょう。</s></p>';
+  return `<speak>${intro.join('')}<break time="900ms"/><p><prosody rate="94%">${body}</prosody></p>${outro}</speak>`;
 }
 
 function writeDailyResult_(quotes, dailyVoice) {
@@ -397,7 +422,7 @@ function markPushNotified_(date) {
   const headers = values[0].map(String);
   const dateIndex = headers.indexOf('date');
   const notifiedIndex = headers.indexOf('pushNotifiedAt') + 1;
-  const rowIndex = values.slice(1).findIndex((row) => String(row[dateIndex]) === date);
+  const rowIndex = values.slice(1).findIndex((row) => normalizeSheetDate_(row[dateIndex]) === date);
   if (rowIndex === -1 || !notifiedIndex) return;
   sheet.getRange(rowIndex + 2, notifiedIndex).setValue(new Date());
 }
@@ -475,7 +500,7 @@ function upsertDailyVoiceRow_(dailyVoice) {
   const values = sheet.getDataRange().getValues();
   const headers = values[0].map(String);
   const dateIndex = headers.indexOf('date');
-  const rowIndex = values.slice(1).findIndex((row) => String(row[dateIndex]) === dailyVoice.date);
+  const rowIndex = values.slice(1).findIndex((row) => normalizeSheetDate_(row[dateIndex]) === dailyVoice.date);
   const rowValues = [
     dailyVoice.date,
     dailyVoice.theme,
@@ -505,7 +530,7 @@ function getDailyVoiceByDate_(date) {
 
   const headers = values[0].map(String);
   const dateIndex = headers.indexOf('date');
-  const row = values.slice(1).find((currentRow) => String(currentRow[dateIndex]) === date);
+  const row = values.slice(1).find((currentRow) => normalizeSheetDate_(currentRow[dateIndex]) === date);
   if (!row) return null;
 
   const item = {};
@@ -514,7 +539,7 @@ function getDailyVoiceByDate_(date) {
   });
 
   return {
-    date: String(item.date || ''),
+    date: normalizeSheetDate_(item.date),
     theme: String(item.theme || ''),
     quoteIds: String(item.quoteIds || '').split(',').map((id) => id.trim()).filter(Boolean),
     aiMessage: String(item.aiMessage || ''),
@@ -541,13 +566,57 @@ function formatDate_(date) {
   return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
+function normalizeSheetDate_(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return formatDate_(value);
+  }
+
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+  const parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) {
+    return formatDate_(parsed);
+  }
+
+  return text;
+}
+
 function truncate_(text, maxLength) {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
+function getTtsSpeakingRate_() {
+  const raw = PropertiesService.getScriptProperties().getProperty('GOOGLE_TTS_RATE');
+  const value = Number(raw || DEFAULT_GOOGLE_TTS_RATE);
+  if (!isFinite(value)) return DEFAULT_GOOGLE_TTS_RATE;
+  return Math.max(0.8, Math.min(1.1, value));
+}
+
+function normalizeNarrationText_(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+function splitIntoSpeechSentences_(text) {
+  const normalized = normalizeNarrationText_(text)
+    .replace(/[。]+/g, '。')
+    .replace(/[！!]+/g, '！')
+    .replace(/[？?]+/g, '？');
+
+  return normalized
+    .split(/(?<=[。！？])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
 function escapeXml_(value) {
-  return String(value)
+  return String(value || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

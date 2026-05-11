@@ -81,7 +81,8 @@ const CONFIG = {
   sheetId: "1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8",
   pushPublicKeyEndpoint: "/api/push-public-key",
   pushSubscribeEndpoint: "/api/push-subscribe",
-  speechRate: 0.88
+  speechRate: 0.9,
+  speechPitch: 0.95
 };
 
 const state = {
@@ -132,6 +133,7 @@ const els = {
 const audio = new Audio();
 let progressTimer = 0;
 let swRegistration = null;
+let preferredSpeechVoice = null;
 
 function normalizeQuote(row, index) {
   const tags = Array.isArray(row.tags)
@@ -352,7 +354,9 @@ function speakText(text, onEnd) {
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "ja-JP";
   utterance.rate = CONFIG.speechRate;
-  utterance.pitch = 0.92;
+  utterance.pitch = CONFIG.speechPitch;
+  utterance.volume = 1;
+  utterance.voice = preferredSpeechVoice;
   utterance.onstart = () => {
     setPlaying(true);
     fakeProgress(text);
@@ -362,6 +366,28 @@ function speakText(text, onEnd) {
     onEnd?.();
   };
   window.speechSynthesis.speak(utterance);
+}
+
+function selectPreferredSpeechVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+
+  const japaneseVoices = voices.filter((voice) => /^ja([-_]|$)/i.test(voice.lang || ""));
+  const pool = japaneseVoices.length ? japaneseVoices : voices;
+  const preferredPatterns = [
+    /google.*japanese/i,
+    /google/i,
+    /natural/i,
+    /ja-jp/i,
+    /kyoko|otoya|haruka|sayaka|nanami/i
+  ];
+
+  for (const pattern of preferredPatterns) {
+    const match = pool.find((voice) => pattern.test(`${voice.name} ${voice.voiceURI}`));
+    if (match) return match;
+  }
+
+  return pool[0] || null;
 }
 
 function fakeProgress(text) {
@@ -548,6 +574,13 @@ async function saveQuoteToSheets({ text, tags, source }) {
 }
 
 async function boot() {
+  preferredSpeechVoice = selectPreferredSpeechVoice();
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.addEventListener("voiceschanged", () => {
+      preferredSpeechVoice = selectPreferredSpeechVoice();
+    });
+  }
+
   if ("serviceWorker" in navigator) {
     swRegistration = await navigator.serviceWorker.register("./service-worker.js");
   }

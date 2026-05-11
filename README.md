@@ -45,6 +45,16 @@ PUSH_WEBHOOK_URL
 PUSH_WEBHOOK_SECRET
 ```
 
+必要なら次の任意設定も使えます。
+
+```text
+GOOGLE_TTS_VOICE
+GOOGLE_TTS_RATE
+```
+
+- `GOOGLE_TTS_VOICE`: 既定は `ja-JP-Chirp3-HD-Achernar`
+- `GOOGLE_TTS_RATE`: 既定は `0.92`。少しゆっくり穏やかにしたいなら `0.88` 〜 `0.94` あたりが使いやすいです
+
 `createDailyVoice` を時間主導トリガーで毎朝実行すると、その日の名言セット選定、AI語りかけ生成、原文MP3、AI MP3、Android 向けの Push 通知までまとめて実行します。`doPost` ではサイトからの名言追加も受け取ります。
 
 最初に Apps Script で試す順番はこれです。
