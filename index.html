@@ -94,6 +94,91 @@
         </p>
       </section>
 
+      <section class="voice-lab" aria-labelledby="voiceLabTitle">
+        <div class="voice-lab-copy">
+          <p class="eyebrow">音声ラボ</p>
+          <h2 id="voiceLabTitle">音声の感じを、この画面で整えます。</h2>
+          <p>
+            GAS のプロパティを直接触らなくても、ここで声とテンポを切り替えて、そのまま保存できます。
+            サンプル音声も同じ画面で聞き比べられます。
+          </p>
+        </div>
+
+        <form class="voice-lab-form" id="ttsSettingsForm">
+          <div class="field-row">
+            <label class="field">
+              <span>おすすめプリセット</span>
+              <select id="ttsPreset">
+                <option value="">現在の設定を維持</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Voice Name</span>
+              <input id="ttsVoiceName" name="voiceName" type="text" placeholder="ja-JP-Chirp3-HD-Aoede" />
+            </label>
+          </div>
+
+          <div class="field-row three-up">
+            <label class="field">
+              <span>Language</span>
+              <input id="ttsLanguageCode" name="languageCode" type="text" value="ja-JP" />
+            </label>
+            <label class="field">
+              <span>Speaking Rate</span>
+              <input id="ttsSpeakingRate" name="speakingRate" type="number" min="0.7" max="1.2" step="0.01" />
+            </label>
+            <label class="field">
+              <span>Pitch</span>
+              <input id="ttsPitch" name="pitch" type="number" min="-6" max="6" step="0.1" />
+            </label>
+          </div>
+
+          <div class="field-row four-up">
+            <label class="field">
+              <span>Input Mode</span>
+              <select id="ttsUseSsml" name="useSSML">
+                <option value="auto">auto</option>
+                <option value="true">ssml</option>
+                <option value="false">text / markup</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>短い間</span>
+              <input id="ttsPauseShortMs" name="pauseShortMs" type="number" min="80" max="1000" step="10" />
+            </label>
+            <label class="field">
+              <span>中くらいの間</span>
+              <input id="ttsPauseMediumMs" name="pauseMediumMs" type="number" min="120" max="1500" step="10" />
+            </label>
+            <label class="field">
+              <span>長い間</span>
+              <input id="ttsPauseLongMs" name="pauseLongMs" type="number" min="180" max="2000" step="10" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>読み指定(JSON)</span>
+            <textarea id="ttsAliases" name="aliasesJson" rows="5" placeholder='{"PWA":"ピー ダブリュー エー","UI":"ユーアイ"}'></textarea>
+          </label>
+
+          <label class="field">
+            <span>比較用サンプル文</span>
+            <textarea id="ttsSampleText" name="sampleText" rows="5"></textarea>
+          </label>
+
+          <div class="form-actions voice-lab-actions">
+            <p class="form-note" id="ttsStatus">現在の音声設定を読み込めます。</p>
+            <div class="button-row">
+              <button class="listen-button" id="ttsReloadButton" type="button">設定を読む</button>
+              <button class="queue-button" id="ttsSamplesButton" type="button">サンプル生成</button>
+              <button class="submit-button" id="ttsSaveButton" type="submit">音声設定を保存</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="sample-grid" id="ttsSamples" aria-live="polite"></div>
+      </section>
+
       <section class="entry-band" aria-labelledby="entryTitle">
         <div class="entry-copy">
           <p class="eyebrow">言葉を足す</p>

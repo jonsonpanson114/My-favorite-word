@@ -59,6 +59,12 @@ function doGet(e) {
   if (action === 'today') {
     return jsonOutput_(getTodayVoice_());
   }
+  if (action === 'ttsSettings') {
+    return jsonOutput_({ ok: true, settings: getPublicTtsSettings_() });
+  }
+  if (action === 'createVoiceComparisonSamples') {
+    return jsonOutput_(createVoiceComparisonSamples());
+  }
 
   return jsonOutput_({ quotes: getQuoteRows_() });
 }
@@ -84,8 +90,8 @@ function doPost(e) {
     return jsonOutput_(sendTestPush_());
   }
 
-  if (action === 'createVoiceComparisonSamples') {
-    return jsonOutput_(createVoiceComparisonSamples());
+  if (action === 'updateTtsSettings') {
+    return jsonOutput_(updateTtsSettings_((e && e.parameter) || {}));
   }
 
   return jsonOutput_({ ok: false, error: 'Unsupported action' });
@@ -191,6 +197,63 @@ function createVoiceComparisonSamples() {
     ok: true,
     sampleText: text,
     outputs: outputs
+  };
+}
+
+function getPublicTtsSettings_() {
+  const config = getTtsConfig_();
+  return {
+    voiceName: config.voiceName,
+    languageCode: config.languageCode,
+    speakingRate: config.speakingRate,
+    pitch: config.pitch,
+    audioEncoding: config.audioEncoding,
+    useSSML: config.useSSML,
+    pauseShortMs: config.pauseShortMs,
+    pauseMediumMs: config.pauseMediumMs,
+    pauseLongMs: config.pauseLongMs,
+    sampleText: getSampleJapaneseText_(),
+    aliasesJson: JSON.stringify(config.aliases, null, 2),
+    presets: Object.keys(TTS_VOICE_PRESETS).map((key) => ({
+      key: key,
+      label: TTS_VOICE_PRESETS[key].label,
+      voiceName: TTS_VOICE_PRESETS[key].voiceName,
+      family: TTS_VOICE_PRESETS[key].family
+    }))
+  };
+}
+
+function updateTtsSettings_(params) {
+  const properties = PropertiesService.getScriptProperties();
+  const keys = [
+    'GOOGLE_TTS_VOICE',
+    'GOOGLE_TTS_LANGUAGE_CODE',
+    'GOOGLE_TTS_RATE',
+    'GOOGLE_TTS_PITCH',
+    'GOOGLE_TTS_AUDIO_ENCODING',
+    'GOOGLE_TTS_USE_SSML',
+    'GOOGLE_TTS_PAUSE_SHORT_MS',
+    'GOOGLE_TTS_PAUSE_MEDIUM_MS',
+    'GOOGLE_TTS_PAUSE_LONG_MS',
+    'GOOGLE_TTS_ALIASES',
+    'GOOGLE_TTS_SAMPLE_TEXT'
+  ];
+
+  keys.forEach((key) => {
+    const paramKey = toCamelCasePropertyKey_(key);
+    if (Object.prototype.hasOwnProperty.call(params, paramKey)) {
+      const value = String(params[paramKey] || '').trim();
+      if (value) {
+        properties.setProperty(key, value);
+      } else {
+        properties.deleteProperty(key);
+      }
+    }
+  });
+
+  return {
+    ok: true,
+    settings: getPublicTtsSettings_()
   };
 }
 
@@ -951,6 +1014,17 @@ function getNumberProperty_(key, fallback, min, max) {
 function getOrCreateFolder_(name) {
   const folders = DriveApp.getFoldersByName(name);
   return folders.hasNext() ? folders.next() : DriveApp.createFolder(name);
+}
+
+function toCamelCasePropertyKey_(propertyKey) {
+  return String(propertyKey || '')
+    .toLowerCase()
+    .split('_')
+    .map((part, index) => {
+      if (!index) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join('');
 }
 
 function jsonOutput_(payload) {

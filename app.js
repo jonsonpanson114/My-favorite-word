@@ -91,6 +91,7 @@ const state = {
   theme: "all",
   favoritesOnly: false,
   favorites: new Set(JSON.parse(localStorage.getItem("voiceShelfFavorites") || "[]")),
+  ttsSettings: null,
   queue: [],
   cursor: 0,
   isPlaying: false,
@@ -127,7 +128,24 @@ const els = {
   formStatus: document.querySelector("#formStatus"),
   submitQuoteButton: document.querySelector("#submitQuoteButton"),
   notifyButton: document.querySelector("#notifyButton"),
-  notifyStatus: document.querySelector("#notifyStatus")
+  notifyStatus: document.querySelector("#notifyStatus"),
+  ttsSettingsForm: document.querySelector("#ttsSettingsForm"),
+  ttsPreset: document.querySelector("#ttsPreset"),
+  ttsVoiceName: document.querySelector("#ttsVoiceName"),
+  ttsLanguageCode: document.querySelector("#ttsLanguageCode"),
+  ttsSpeakingRate: document.querySelector("#ttsSpeakingRate"),
+  ttsPitch: document.querySelector("#ttsPitch"),
+  ttsUseSsml: document.querySelector("#ttsUseSsml"),
+  ttsPauseShortMs: document.querySelector("#ttsPauseShortMs"),
+  ttsPauseMediumMs: document.querySelector("#ttsPauseMediumMs"),
+  ttsPauseLongMs: document.querySelector("#ttsPauseLongMs"),
+  ttsAliases: document.querySelector("#ttsAliases"),
+  ttsSampleText: document.querySelector("#ttsSampleText"),
+  ttsStatus: document.querySelector("#ttsStatus"),
+  ttsReloadButton: document.querySelector("#ttsReloadButton"),
+  ttsSamplesButton: document.querySelector("#ttsSamplesButton"),
+  ttsSaveButton: document.querySelector("#ttsSaveButton"),
+  ttsSamples: document.querySelector("#ttsSamples")
 };
 
 const audio = new Audio();
@@ -498,6 +516,10 @@ function bindEvents() {
 
   els.quoteForm.addEventListener("submit", handleQuoteSubmit);
   els.notifyButton.addEventListener("click", enableNotifications);
+  els.ttsSettingsForm.addEventListener("submit", saveTtsSettings);
+  els.ttsReloadButton.addEventListener("click", loadTtsSettings);
+  els.ttsSamplesButton.addEventListener("click", generateTtsSamples);
+  els.ttsPreset.addEventListener("change", applyTtsPreset);
 }
 
 function syncFloatingPlayerVisibility() {
@@ -509,6 +531,201 @@ function syncFloatingPlayerVisibility() {
 
 function setFormStatus(message) {
   els.formStatus.textContent = message;
+}
+
+function setTtsStatus(message) {
+  els.ttsStatus.textContent = message;
+}
+
+function populateTtsPresets(presets = []) {
+  const current = els.ttsPreset.value;
+  els.ttsPreset.innerHTML = '<option value="">現在の設定を維持</option>';
+  presets.forEach((preset) => {
+    const option = document.createElement("option");
+    option.value = preset.voiceName;
+    option.textContent = `${preset.label} | ${preset.family}`;
+    option.dataset.voiceName = preset.voiceName;
+    els.ttsPreset.append(option);
+  });
+  els.ttsPreset.value = current;
+}
+
+function renderTtsSettings(settings) {
+  if (!settings) return;
+  state.ttsSettings = settings;
+  populateTtsPresets(settings.presets || []);
+  els.ttsVoiceName.value = settings.voiceName || "";
+  els.ttsLanguageCode.value = settings.languageCode || "ja-JP";
+  els.ttsSpeakingRate.value = settings.speakingRate ?? 0.92;
+  els.ttsPitch.value = settings.pitch ?? 0;
+  els.ttsUseSsml.value = String(settings.useSSML || "auto");
+  els.ttsPauseShortMs.value = settings.pauseShortMs ?? 220;
+  els.ttsPauseMediumMs.value = settings.pauseMediumMs ?? 360;
+  els.ttsPauseLongMs.value = settings.pauseLongMs ?? 650;
+  els.ttsAliases.value = settings.aliasesJson || "{}";
+  els.ttsSampleText.value = settings.sampleText || "";
+}
+
+function renderTtsSamples(outputs = []) {
+  els.ttsSamples.innerHTML = "";
+
+  if (!outputs.length) {
+    const empty = document.createElement("p");
+    empty.className = "sample-empty";
+    empty.textContent = "ここにサンプル音声が並びます。";
+    els.ttsSamples.append(empty);
+    return;
+  }
+
+  outputs.forEach((sample) => {
+    const card = document.createElement("article");
+    card.className = "sample-card";
+
+    const title = document.createElement("h3");
+    title.textContent = sample.label || sample.voiceName || sample.preset;
+
+    const meta = document.createElement("p");
+    meta.className = "sample-meta";
+    meta.textContent = `${sample.voiceName} / ${sample.inputMode}`;
+
+    const audioEl = document.createElement("audio");
+    audioEl.controls = true;
+    audioEl.preload = "none";
+    audioEl.src = sample.audioUrl || "";
+
+    card.append(title, meta, audioEl);
+    els.ttsSamples.append(card);
+  });
+}
+
+async function loadTtsSettings() {
+  if (!CONFIG.sheetsEndpoint) {
+    setTtsStatus("GAS URL が見つからないので、音声設定はまだ読めません。");
+    return;
+  }
+
+  setTtsStatus("音声設定を読み込んでいます。");
+  try {
+    const response = await fetch(`${CONFIG.sheetsEndpoint}?action=ttsSettings`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`tts settings status ${response.status}`);
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "Failed to load settings");
+    renderTtsSettings(payload.settings);
+    setTtsStatus("現在の音声設定を読み込みました。");
+  } catch (error) {
+    console.warn(error);
+    setTtsStatus("音声設定の読み込みに失敗しました。GAS の反映を確認してください。");
+  }
+}
+
+function collectTtsSettingsForm() {
+  return {
+    voiceName: els.ttsVoiceName.value.trim(),
+    languageCode: els.ttsLanguageCode.value.trim(),
+    speakingRate: els.ttsSpeakingRate.value.trim(),
+    pitch: els.ttsPitch.value.trim(),
+    useSSML: els.ttsUseSsml.value,
+    pauseShortMs: els.ttsPauseShortMs.value.trim(),
+    pauseMediumMs: els.ttsPauseMediumMs.value.trim(),
+    pauseLongMs: els.ttsPauseLongMs.value.trim(),
+    aliasesJson: els.ttsAliases.value.trim(),
+    sampleText: els.ttsSampleText.value.trim()
+  };
+}
+
+async function saveTtsSettings(event) {
+  event.preventDefault();
+  if (!CONFIG.sheetsEndpoint) return;
+
+  const params = new URLSearchParams({ action: "updateTtsSettings", ...collectTtsSettingsForm() });
+  setTtsStatus("音声設定を保存しています。");
+  els.ttsSaveButton.disabled = true;
+
+  try {
+    let saved = false;
+    try {
+      const response = await fetch(CONFIG.sheetsEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+        },
+        body: params.toString()
+      });
+
+      if (response.ok) {
+        const payload = await response.json();
+        if (payload.ok && payload.settings) {
+          renderTtsSettings(payload.settings);
+          saved = true;
+        }
+      }
+    } catch (error) {
+      console.warn("cors save failed, retrying with no-cors", error);
+    }
+
+    if (!saved) {
+      await fetch(CONFIG.sheetsEndpoint, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+        },
+        body: params.toString()
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      await loadTtsSettings();
+    }
+
+    setTtsStatus("音声設定を保存しました。必要ならサンプル生成で確認できます。");
+  } catch (error) {
+    console.warn(error);
+    setTtsStatus("保存の送信に失敗しました。もう一度試してください。");
+  } finally {
+    els.ttsSaveButton.disabled = false;
+  }
+}
+
+async function generateTtsSamples() {
+  if (!CONFIG.sheetsEndpoint) return;
+  setTtsStatus("比較用のサンプル音声を生成しています。少し待ってください。");
+  els.ttsSamplesButton.disabled = true;
+
+  try {
+    const response = await fetch(`${CONFIG.sheetsEndpoint}?action=createVoiceComparisonSamples`, {
+      cache: "no-store"
+    });
+    if (!response.ok) throw new Error(`tts sample status ${response.status}`);
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "Failed to create samples");
+    renderTtsSamples(payload.outputs || []);
+    setTtsStatus("サンプル音声を更新しました。聞き比べて良い声を選べます。");
+  } catch (error) {
+    console.warn(error);
+    setTtsStatus("サンプル生成に失敗しました。GAS 側の更新を確認してください。");
+  } finally {
+    els.ttsSamplesButton.disabled = false;
+  }
+}
+
+function applyTtsPreset() {
+  const voiceName = els.ttsPreset.value;
+  if (!voiceName || !state.ttsSettings?.presets) return;
+  const preset = state.ttsSettings.presets.find((item) => item.voiceName === voiceName);
+  if (!preset) return;
+
+  els.ttsVoiceName.value = preset.voiceName;
+
+  if (preset.family === "chirp3hd") {
+    els.ttsUseSsml.value = "auto";
+    els.ttsSpeakingRate.value = "0.90";
+    els.ttsPitch.value = "0";
+  } else {
+    els.ttsUseSsml.value = "true";
+    els.ttsSpeakingRate.value = "0.94";
+    els.ttsPitch.value = "-1.5";
+  }
+
+  setTtsStatus("プリセットをフォームに反映しました。保存するとすぐ使えます。");
 }
 
 async function handleQuoteSubmit(event) {
@@ -590,8 +807,10 @@ async function boot() {
   buildQueue();
   renderQuotes();
   updateNowPlaying();
+  renderTtsSamples([]);
   bindEvents();
   syncFloatingPlayerVisibility();
+  await loadTtsSettings();
   await refreshNotificationState();
 }
 

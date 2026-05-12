@@ -8,7 +8,8 @@
 2. `http://127.0.0.1:4173` をブラウザで開く。
 3. まずはデモ名言が表示され、音声URLがない場合はブラウザの日本語読み上げで再生します。
 4. フォームから名言を追加すると、その場で一覧に反映されます。
-5. Google Sheets/GAS連携後は、追加内容を Sheets に送れるようになり、Drive に保存されたGoogle Text-to-SpeechのMP3も再生できます。
+5. `音声ラボ` で声・速度・間を調整し、そのまま保存やサンプル比較ができます。
+6. Google Sheets/GAS連携後は、追加内容を Sheets に送れるようになり、Drive に保存されたGoogle Text-to-SpeechのMP3も再生できます。
 
 ```bash
 npm run start
@@ -91,7 +92,7 @@ GOOGLE_TTS_SAMPLE_TEXT
 - `DAILY_QUOTE_COUNT` は毎朝選ぶ名言数です。未設定なら `6`
 - `doGet?action=today` でその日の生成済みデータを返します
 - `DailyVoices` タブに日ごとの生成結果と通知状態が残ります
-- `doPost?action=createVoiceComparisonSamples` でも比較サンプルを生成できます
+- `doGet?action=createVoiceComparisonSamples` でも比較サンプルを生成できます
 
 ## 日本語音声の改善方針
 
@@ -130,6 +131,18 @@ GOOGLE_TTS_PAUSE_LONG_MS=760
 ```
 
 Chirp 3 HD の方が生っぽく聞こえることがありますが、文面によっては Wavenet の方が整って聞こえることがあります。`createVoiceComparisonSamples()` で同じ原稿を聴き比べるのがいちばん早いです。
+
+## サイト上でできること
+
+公開サイトの `音声ラボ` から次を操作できます。
+
+- 現在の TTS 設定の読み込み
+- Voice / rate / pitch / pause の変更
+- 読み指定 JSON とサンプル原稿の編集
+- 設定保存
+- 比較用サンプル音声の生成と聞き比べ
+
+最初の API キー設定だけ終えたら、普段の調整は Apps Script の Script Properties を直接開かなくても進められます。
 
 ## Vercel 環境変数
 

@@ -64,6 +64,7 @@ button {
 .today,
 .tool-strip,
 .daily-brief,
+.voice-lab,
 .mini-player {
   border: 1px solid rgba(33, 31, 26, 0.12);
   background: rgba(255, 250, 240, 0.7);
@@ -361,6 +362,80 @@ select {
   border-radius: var(--radius);
 }
 
+.voice-lab {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  gap: 18px;
+  padding: 22px;
+  border-radius: var(--radius);
+}
+
+.voice-lab-copy p:last-child {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-family: "Yu Gothic", "Hiragino Sans", sans-serif;
+  line-height: 1.9;
+}
+
+.voice-lab-form {
+  display: grid;
+  gap: 14px;
+}
+
+.three-up {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.four-up {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.voice-lab-actions {
+  align-items: flex-end;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.sample-grid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sample-card {
+  display: grid;
+  gap: 10px;
+  min-height: 180px;
+  padding: 16px;
+  border: 1px solid rgba(33, 31, 26, 0.12);
+  border-radius: var(--radius);
+  background: rgba(255, 250, 240, 0.82);
+}
+
+.sample-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.sample-meta,
+.sample-empty {
+  margin: 0;
+  color: var(--muted);
+  font-family: "Yu Gothic", "Hiragino Sans", sans-serif;
+  font-size: 0.82rem;
+  line-height: 1.75;
+}
+
+.sample-card audio {
+  width: 100%;
+}
+
 .daily-brief p:last-child {
   margin: 0;
   color: var(--muted);
@@ -548,12 +623,17 @@ body.has-floating-player .mini-player {
 @media (max-width: 920px) {
   .today,
   .daily-brief,
-  .entry-band {
+  .entry-band,
+  .voice-lab {
     grid-template-columns: 1fr;
   }
 
   .quote-card {
     grid-column: span 6;
+  }
+
+  .sample-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -589,6 +669,12 @@ body.has-floating-player .mini-player {
     grid-template-columns: 1fr;
   }
 
+  .three-up,
+  .four-up,
+  .sample-grid {
+    grid-template-columns: 1fr;
+  }
+
   .card-actions {
     flex-direction: column;
     align-items: stretch;
@@ -597,6 +683,15 @@ body.has-floating-player .mini-player {
   .form-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .button-row {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .button-row > * {
+    flex: 1;
   }
 
   .mini-player {
