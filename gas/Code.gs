@@ -28,6 +28,17 @@ const TTS_VOICE_PRESETS = {
     speakingRate: 0.94,
     pitch: -1.5
   },
+  wavenet_a_sweet: {
+    label: 'WaveNet A | 甘め女性',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Wavenet-A',
+    family: 'wavenet',
+    speakingRate: 0.98,
+    pitch: 1.2,
+    pauseShortMs: 180,
+    pauseMediumMs: 300,
+    pauseLongMs: 520
+  },
   chirp_aoede: {
     label: 'Chirp 3 HD Aoede | 生っぽい女性',
     languageCode: 'ja-JP',
@@ -62,6 +73,17 @@ const TTS_VOICE_PRESETS = {
     family: 'neural2',
     speakingRate: 0.93,
     pitch: -1.2
+  },
+  neural2_b_sweet: {
+    label: 'Neural2 B | 甘め女性',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Neural2-B',
+    family: 'neural2',
+    speakingRate: 0.97,
+    pitch: 0.8,
+    pauseShortMs: 190,
+    pauseMediumMs: 310,
+    pauseLongMs: 540
   },
   wavenet_d: {
     label: 'WaveNet D | 落ち着いた男性',
@@ -193,7 +215,16 @@ function createDailyVoiceTrigger() {
 function createVoiceComparisonSamples() {
   const text = getSampleJapaneseText_();
   const folder = getOrCreateFolder_(SAMPLE_OUTPUT_FOLDER_NAME);
-  const presetKeys = ['chirp_aoede', 'chirp_aoede_cute', 'chirp_achernar', 'wavenet_a', 'wavenet_d', 'neural2_b'];
+  const presetKeys = [
+    'chirp_aoede',
+    'chirp_aoede_cute',
+    'chirp_achernar',
+    'wavenet_a',
+    'wavenet_a_sweet',
+    'neural2_b',
+    'neural2_b_sweet',
+    'wavenet_d'
+  ];
   const outputs = [];
 
   presetKeys.forEach((presetKey) => {
