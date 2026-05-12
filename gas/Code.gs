@@ -3,7 +3,7 @@ const DAILY_SHEET_NAME = 'DailyVoices';
 const SUBSCRIPTION_SHEET_NAME = 'PushSubscriptions';
 const OUTPUT_FOLDER_NAME = 'Voice Shelf Audio';
 const GEMINI_MODEL = 'gemini-3-flash-preview';
-const DEFAULT_GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Achernar';
+const DEFAULT_GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Aoede';
 const DEFAULT_GOOGLE_TTS_RATE = 0.92;
 const DEFAULT_SPREADSHEET_ID = '1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8';
 const DEFAULT_DAILY_QUOTE_COUNT = 6;
@@ -60,8 +60,8 @@ function createDailyVoice(options) {
   const dailyQuotes = pickDailyQuotes_(quotes, today);
   const theme = buildTheme_(dailyQuotes);
   const aiMessage = generateAiMessage_(dailyQuotes, theme);
-  const quoteNarration = buildQuoteNarrationSsml_(dailyQuotes);
-  const aiNarration = buildAiNarrationSsml_(aiMessage, theme);
+  const quoteNarration = buildQuoteNarrationMarkup_(dailyQuotes);
+  const aiNarration = buildAiNarrationMarkup_(aiMessage, theme);
 
   const folder = getOutputFolder_();
   const quoteUrl = synthesizeToDrive_(quoteNarration, `quote-${today}.mp3`, folder);
@@ -229,7 +229,7 @@ function generateAiMessage_(quotes, theme) {
   return json.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
 }
 
-function synthesizeToDrive_(ssml, fileName, folder) {
+function synthesizeToDrive_(markup, fileName, folder) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('GOOGLE_TTS_API_KEY');
   if (!apiKey) return '';
   const voiceName =
@@ -237,7 +237,7 @@ function synthesizeToDrive_(ssml, fileName, folder) {
   const speakingRate = getTtsSpeakingRate_();
 
   const payload = {
-    input: { ssml: ssml },
+    input: { markup: markup },
     voice: { languageCode: 'ja-JP', name: voiceName },
     audioConfig: {
       audioEncoding: 'MP3',
@@ -269,28 +269,26 @@ function synthesizeToDrive_(ssml, fileName, folder) {
   return `https://drive.google.com/uc?export=download&id=${file.getId()}`;
 }
 
-function buildQuoteNarrationSsml_(quotes) {
-  const sections = quotes.map((quote) => {
-    const sentences = splitIntoSpeechSentences_(quote.text);
-    if (!sentences.length) return '';
-    const body = sentences
-      .map((sentence) => `<s>${escapeXml_(sentence)}</s>`)
-      .join('<break time="650ms"/>');
-    return `<p><prosody rate="92%">${body}</prosody></p>`;
-  }).filter(Boolean);
-
-  return `<speak>${sections.join('<break time="1200ms"/>')}</speak>`;
+function buildQuoteNarrationMarkup_(quotes) {
+  return quotes
+    .map((quote) => {
+      const sentences = splitIntoSpeechSentences_(quote.text);
+      return sentences.join(' [pause] ');
+    })
+    .filter(Boolean)
+    .join(' [pause long] [pause] ');
 }
 
-function buildAiNarrationSsml_(message, theme) {
+function buildAiNarrationMarkup_(message, theme) {
   const normalized = normalizeNarrationText_(message);
   const sentences = splitIntoSpeechSentences_(normalized);
-  const intro = [
-    `<p><s>おはようございます。</s><break time="450ms"/><s>今日のテーマは、${escapeXml_(theme)}です。</s></p>`
-  ];
-  const body = sentences.map((sentence) => `<s>${escapeXml_(sentence)}</s>`).join('<break time="500ms"/>');
-  const outro = '<p><break time="650ms"/><s>では、今日も無理なく、ひとつずつ進めていきましょう。</s></p>';
-  return `<speak>${intro.join('')}<break time="900ms"/><p><prosody rate="94%">${body}</prosody></p>${outro}</speak>`;
+  const intro = [`おはようございます。`, `今日のテーマは、${theme}です。`];
+  const outro = [`では、今日も無理なく、ひとつずつ進めていきましょう。`];
+  return intro
+    .concat(sentences)
+    .concat(outro)
+    .filter(Boolean)
+    .join(' [pause] ');
 }
 
 function writeDailyResult_(quotes, dailyVoice) {
@@ -613,13 +611,4 @@ function splitIntoSpeechSentences_(text) {
     .split(/(?<=[。！？])/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
-}
-
-function escapeXml_(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }
