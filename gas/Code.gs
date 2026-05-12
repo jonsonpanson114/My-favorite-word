@@ -88,6 +88,17 @@ const TTS_VOICE_PRESETS = {
     pauseMediumMs: 300,
     pauseLongMs: 520
   },
+  chirp_leda_sweeter: {
+    label: 'Chirp 3 HD Leda | もっと甘め',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Chirp3-HD-Leda',
+    family: 'chirp3hd',
+    speakingRate: 0.99,
+    pitch: 0,
+    pauseShortMs: 150,
+    pauseMediumMs: 260,
+    pauseLongMs: 460
+  },
   chirp_zephyr: {
     label: 'Chirp 3 HD Zephyr | 明るい女性',
     languageCode: 'ja-JP',
@@ -253,6 +264,7 @@ function createVoiceComparisonSamples() {
     'chirp_aoede_cute',
     'chirp_kore',
     'chirp_leda',
+    'chirp_leda_sweeter',
     'chirp_zephyr'
   ];
   const outputs = [];
