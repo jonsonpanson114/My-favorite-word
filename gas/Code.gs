@@ -4,15 +4,15 @@ const SUBSCRIPTION_SHEET_NAME = 'PushSubscriptions';
 const OUTPUT_FOLDER_NAME = 'Voice Shelf Audio';
 const SAMPLE_OUTPUT_FOLDER_NAME = 'Voice Shelf Audio Samples';
 const GEMINI_MODEL = 'gemini-3-flash-preview';
-const DEFAULT_GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Aoede';
+const DEFAULT_GOOGLE_TTS_VOICE = 'ja-JP-Wavenet-A';
 const DEFAULT_GOOGLE_TTS_LANGUAGE_CODE = 'ja-JP';
-const DEFAULT_GOOGLE_TTS_RATE = 0.92;
-const DEFAULT_GOOGLE_TTS_PITCH = -1.0;
+const DEFAULT_GOOGLE_TTS_RATE = 0.94;
+const DEFAULT_GOOGLE_TTS_PITCH = -1.5;
 const DEFAULT_GOOGLE_TTS_AUDIO_ENCODING = 'MP3';
-const DEFAULT_GOOGLE_TTS_USE_SSML = 'auto';
-const DEFAULT_TTS_PAUSE_SHORT_MS = 220;
-const DEFAULT_TTS_PAUSE_MEDIUM_MS = 360;
-const DEFAULT_TTS_PAUSE_LONG_MS = 650;
+const DEFAULT_GOOGLE_TTS_USE_SSML = 'true';
+const DEFAULT_TTS_PAUSE_SHORT_MS = 240;
+const DEFAULT_TTS_PAUSE_MEDIUM_MS = 380;
+const DEFAULT_TTS_PAUSE_LONG_MS = 760;
 const DEFAULT_SPREADSHEET_ID = '1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8';
 const DEFAULT_DAILY_QUOTE_COUNT = 6;
 const DEFAULT_JAPANESE_SAMPLE_TEXT =
@@ -20,8 +20,16 @@ const DEFAULT_JAPANESE_SAMPLE_TEXT =
   'カタログや図面だけでは伝わりにくい質感、操作感、音の聞こえ方。\n' +
   'そうした実際の体感を、ぜひショールームでご確認ください。';
 const TTS_VOICE_PRESETS = {
+  wavenet_a: {
+    label: 'WaveNet A | 柔らかい女性',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Wavenet-A',
+    family: 'wavenet',
+    speakingRate: 0.94,
+    pitch: -1.5
+  },
   chirp_aoede: {
-    label: 'Chirp 3 HD Aoede',
+    label: 'Chirp 3 HD Aoede | 生っぽい女性',
     languageCode: 'ja-JP',
     voiceName: 'ja-JP-Chirp3-HD-Aoede',
     family: 'chirp3hd',
@@ -29,23 +37,23 @@ const TTS_VOICE_PRESETS = {
     pitch: 0
   },
   chirp_achernar: {
-    label: 'Chirp 3 HD Achernar',
+    label: 'Chirp 3 HD Achernar | 明るめ女性',
     languageCode: 'ja-JP',
     voiceName: 'ja-JP-Chirp3-HD-Achernar',
     family: 'chirp3hd',
     speakingRate: 0.9,
     pitch: 0
   },
-  wavenet_a: {
-    label: 'WaveNet A',
+  neural2_b: {
+    label: 'Neural2 B | すっきり女性',
     languageCode: 'ja-JP',
-    voiceName: 'ja-JP-Wavenet-A',
-    family: 'wavenet',
-    speakingRate: 0.94,
-    pitch: -1.5
+    voiceName: 'ja-JP-Neural2-B',
+    family: 'neural2',
+    speakingRate: 0.93,
+    pitch: -1.2
   },
   wavenet_d: {
-    label: 'WaveNet D',
+    label: 'WaveNet D | 落ち着いた男性',
     languageCode: 'ja-JP',
     voiceName: 'ja-JP-Wavenet-D',
     family: 'wavenet',
@@ -174,7 +182,7 @@ function createDailyVoiceTrigger() {
 function createVoiceComparisonSamples() {
   const text = getSampleJapaneseText_();
   const folder = getOrCreateFolder_(SAMPLE_OUTPUT_FOLDER_NAME);
-  const presetKeys = ['chirp_aoede', 'chirp_achernar', 'wavenet_a', 'wavenet_d'];
+  const presetKeys = ['chirp_aoede', 'chirp_achernar', 'wavenet_a', 'wavenet_d', 'neural2_b'];
   const outputs = [];
 
   presetKeys.forEach((presetKey) => {
