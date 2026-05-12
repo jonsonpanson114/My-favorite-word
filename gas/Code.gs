@@ -36,6 +36,17 @@ const TTS_VOICE_PRESETS = {
     speakingRate: 0.9,
     pitch: 0
   },
+  chirp_aoede_cute: {
+    label: 'Chirp 3 HD Aoede | かわいめ',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Chirp3-HD-Aoede',
+    family: 'chirp3hd',
+    speakingRate: 0.96,
+    pitch: 0,
+    pauseShortMs: 180,
+    pauseMediumMs: 300,
+    pauseLongMs: 520
+  },
   chirp_achernar: {
     label: 'Chirp 3 HD Achernar | 明るめ女性',
     languageCode: 'ja-JP',
@@ -182,7 +193,7 @@ function createDailyVoiceTrigger() {
 function createVoiceComparisonSamples() {
   const text = getSampleJapaneseText_();
   const folder = getOrCreateFolder_(SAMPLE_OUTPUT_FOLDER_NAME);
-  const presetKeys = ['chirp_aoede', 'chirp_achernar', 'wavenet_a', 'wavenet_d', 'neural2_b'];
+  const presetKeys = ['chirp_aoede', 'chirp_aoede_cute', 'chirp_achernar', 'wavenet_a', 'wavenet_d', 'neural2_b'];
   const outputs = [];
 
   presetKeys.forEach((presetKey) => {
