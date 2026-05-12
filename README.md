@@ -49,11 +49,30 @@ PUSH_WEBHOOK_SECRET
 
 ```text
 GOOGLE_TTS_VOICE
+GOOGLE_TTS_LANGUAGE_CODE
 GOOGLE_TTS_RATE
+GOOGLE_TTS_PITCH
+GOOGLE_TTS_AUDIO_ENCODING
+GOOGLE_TTS_USE_SSML
+GOOGLE_TTS_PAUSE_SHORT_MS
+GOOGLE_TTS_PAUSE_MEDIUM_MS
+GOOGLE_TTS_PAUSE_LONG_MS
+GOOGLE_TTS_ALIASES
+GOOGLE_TTS_SAMPLE_TEXT
 ```
 
-- `GOOGLE_TTS_VOICE`: 既定は `ja-JP-Chirp3-HD-Achernar`
-- `GOOGLE_TTS_RATE`: 既定は `0.92`。少しゆっくり穏やかにしたいなら `0.88` 〜 `0.94` あたりが使いやすいです
+- `GOOGLE_TTS_VOICE`: 既定は `ja-JP-Chirp3-HD-Aoede`
+- `GOOGLE_TTS_LANGUAGE_CODE`: 既定は `ja-JP`
+- `GOOGLE_TTS_RATE`: 既定は `0.92`。少しゆっくり穏やかにしたいなら `0.88` 〜 `0.94`
+- `GOOGLE_TTS_PITCH`: Wavenet/Neural2 系で有効。既定は `-1.0`
+- `GOOGLE_TTS_AUDIO_ENCODING`: 既定は `MP3`
+- `GOOGLE_TTS_USE_SSML`: `auto` / `true` / `false`
+  - `auto`: Chirp 3 HD は `markup`、Wavenet/Neural2 は `SSML`
+- `GOOGLE_TTS_PAUSE_SHORT_MS`: 既定 `220`
+- `GOOGLE_TTS_PAUSE_MEDIUM_MS`: 既定 `360`
+- `GOOGLE_TTS_PAUSE_LONG_MS`: 既定 `650`
+- `GOOGLE_TTS_ALIASES`: JSON 形式の読み指定。例 `{"PWA":"ピー ダブリュー エー","UI":"ユーアイ"}`
+- `GOOGLE_TTS_SAMPLE_TEXT`: 聴き比べ用のサンプル原稿
 
 `createDailyVoice` を時間主導トリガーで毎朝実行すると、その日の名言セット選定、AI語りかけ生成、原文MP3、AI MP3、Android 向けの Push 通知までまとめて実行します。`doPost` ではサイトからの名言追加も受け取ります。
 
@@ -65,12 +84,52 @@ GOOGLE_TTS_RATE
 4. `Quotes` タブの対象行に `quoteAudioUrl` / `aiMessage` / `aiAudioUrl` / `generatedDate` が入ることを確認する
 5. `sendTestPush_()` を実行して、Android に通知が届くか確認する
 6. 問題なければ `installDailyTrigger(7)` のように実行して毎朝トリガーを作る
+7. 音声比較したいときは `createVoiceComparisonSamples()` を実行する
 
 補足:
 
 - `DAILY_QUOTE_COUNT` は毎朝選ぶ名言数です。未設定なら `6`
 - `doGet?action=today` でその日の生成済みデータを返します
 - `DailyVoices` タブに日ごとの生成結果と通知状態が残ります
+- `doPost?action=createVoiceComparisonSamples` でも比較サンプルを生成できます
+
+## 日本語音声の改善方針
+
+今回の実装では、音声を次の方針で改善しています。
+
+- 長い日本語文を短めの文に分割する
+- 箇条書きや見出し記号を読み上げ向けに整形する
+- URL や `AI` / `PWA` / `UI` などを読みやすい表現に寄せる
+- `GOOGLE_TTS_ALIASES` で固有名詞や商品名の読みを `sub alias` に差し込めるようにする
+- Chirp 3 HD は `markup` と `[pause]` / `[pause long]` を優先する
+- Wavenet / Neural2 / Standard 系は `SSML` を使い、`<speak>` / `<p>` / `<s>` / `<break>` / `<sub>` を使う
+
+## まず試したい設定
+
+自然さの出方が違うので、まずは次の 2 パターンをおすすめします。
+
+### 1. まずはリアル寄り
+
+```text
+GOOGLE_TTS_VOICE=ja-JP-Chirp3-HD-Aoede
+GOOGLE_TTS_RATE=0.9
+GOOGLE_TTS_USE_SSML=auto
+GOOGLE_TTS_PAUSE_SHORT_MS=220
+GOOGLE_TTS_PAUSE_LONG_MS=700
+```
+
+### 2. 制御しやすさ重視
+
+```text
+GOOGLE_TTS_VOICE=ja-JP-Wavenet-A
+GOOGLE_TTS_RATE=0.94
+GOOGLE_TTS_PITCH=-1.5
+GOOGLE_TTS_USE_SSML=true
+GOOGLE_TTS_PAUSE_SHORT_MS=240
+GOOGLE_TTS_PAUSE_LONG_MS=760
+```
+
+Chirp 3 HD の方が生っぽく聞こえることがありますが、文面によっては Wavenet の方が整って聞こえることがあります。`createVoiceComparisonSamples()` で同じ原稿を聴き比べるのがいちばん早いです。
 
 ## Vercel 環境変数
 

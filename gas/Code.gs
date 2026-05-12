@@ -2,11 +2,57 @@ const SHEET_NAME = 'Quotes';
 const DAILY_SHEET_NAME = 'DailyVoices';
 const SUBSCRIPTION_SHEET_NAME = 'PushSubscriptions';
 const OUTPUT_FOLDER_NAME = 'Voice Shelf Audio';
+const SAMPLE_OUTPUT_FOLDER_NAME = 'Voice Shelf Audio Samples';
 const GEMINI_MODEL = 'gemini-3-flash-preview';
 const DEFAULT_GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Aoede';
+const DEFAULT_GOOGLE_TTS_LANGUAGE_CODE = 'ja-JP';
 const DEFAULT_GOOGLE_TTS_RATE = 0.92;
+const DEFAULT_GOOGLE_TTS_PITCH = -1.0;
+const DEFAULT_GOOGLE_TTS_AUDIO_ENCODING = 'MP3';
+const DEFAULT_GOOGLE_TTS_USE_SSML = 'auto';
+const DEFAULT_TTS_PAUSE_SHORT_MS = 220;
+const DEFAULT_TTS_PAUSE_MEDIUM_MS = 360;
+const DEFAULT_TTS_PAUSE_LONG_MS = 650;
 const DEFAULT_SPREADSHEET_ID = '1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8';
 const DEFAULT_DAILY_QUOTE_COUNT = 6;
+const DEFAULT_JAPANESE_SAMPLE_TEXT =
+  'こんにちは。今日は、設計事務所向けのショールーム案内についてご紹介します。\n' +
+  'カタログや図面だけでは伝わりにくい質感、操作感、音の聞こえ方。\n' +
+  'そうした実際の体感を、ぜひショールームでご確認ください。';
+const TTS_VOICE_PRESETS = {
+  chirp_aoede: {
+    label: 'Chirp 3 HD Aoede',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Chirp3-HD-Aoede',
+    family: 'chirp3hd',
+    speakingRate: 0.9,
+    pitch: 0
+  },
+  chirp_achernar: {
+    label: 'Chirp 3 HD Achernar',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Chirp3-HD-Achernar',
+    family: 'chirp3hd',
+    speakingRate: 0.9,
+    pitch: 0
+  },
+  wavenet_a: {
+    label: 'WaveNet A',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Wavenet-A',
+    family: 'wavenet',
+    speakingRate: 0.94,
+    pitch: -1.5
+  },
+  wavenet_d: {
+    label: 'WaveNet D',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Wavenet-D',
+    family: 'wavenet',
+    speakingRate: 0.94,
+    pitch: -1.0
+  }
+};
 
 function doGet(e) {
   const action = String((e && e.parameter && e.parameter.action) || '');
@@ -38,6 +84,10 @@ function doPost(e) {
     return jsonOutput_(sendTestPush_());
   }
 
+  if (action === 'createVoiceComparisonSamples') {
+    return jsonOutput_(createVoiceComparisonSamples());
+  }
+
   return jsonOutput_({ ok: false, error: 'Unsupported action' });
 }
 
@@ -60,12 +110,13 @@ function createDailyVoice(options) {
   const dailyQuotes = pickDailyQuotes_(quotes, today);
   const theme = buildTheme_(dailyQuotes);
   const aiMessage = generateAiMessage_(dailyQuotes, theme);
-  const quoteNarration = buildQuoteNarrationMarkup_(dailyQuotes);
-  const aiNarration = buildAiNarrationMarkup_(aiMessage, theme);
+  const ttsConfig = getTtsConfig_();
+  const quoteNarration = buildQuoteNarrationForTts_(dailyQuotes, ttsConfig);
+  const aiNarration = buildAiNarrationForTts_(aiMessage, theme, ttsConfig);
 
   const folder = getOutputFolder_();
-  const quoteUrl = synthesizeToDrive_(quoteNarration, `quote-${today}.mp3`, folder);
-  const aiUrl = synthesizeToDrive_(aiNarration, `ai-${today}.mp3`, folder);
+  const quoteUrl = synthesizeToDrive_(quoteNarration, `quote-${today}.mp3`, folder, ttsConfig);
+  const aiUrl = synthesizeToDrive_(aiNarration, `ai-${today}.mp3`, folder, ttsConfig);
   const appUrl = PropertiesService.getScriptProperties().getProperty('PWA_URL') || '';
 
   const dailyVoice = upsertDailyVoiceRow_({
@@ -112,6 +163,35 @@ function installDailyTrigger(hour) {
 
 function createDailyVoiceTrigger() {
   return createDailyVoice({ force: false });
+}
+
+function createVoiceComparisonSamples() {
+  const text = getSampleJapaneseText_();
+  const folder = getOrCreateFolder_(SAMPLE_OUTPUT_FOLDER_NAME);
+  const presetKeys = ['chirp_aoede', 'chirp_achernar', 'wavenet_a', 'wavenet_d'];
+  const outputs = [];
+
+  presetKeys.forEach((presetKey) => {
+    const preset = TTS_VOICE_PRESETS[presetKey];
+    if (!preset) return;
+    const config = getTtsConfig_(preset);
+    const narration = buildStandaloneNarrationForTts_(text, config);
+    const fileName = `output_${presetKey}.mp3`;
+    const audioUrl = synthesizeToDrive_(narration, fileName, folder, config);
+    outputs.push({
+      preset: presetKey,
+      label: preset.label,
+      voiceName: config.voiceName,
+      inputMode: getPreferredInputMode_(config),
+      audioUrl: audioUrl
+    });
+  });
+
+  return {
+    ok: true,
+    sampleText: text,
+    outputs: outputs
+  };
 }
 
 function sendTestPush_() {
@@ -229,32 +309,30 @@ function generateAiMessage_(quotes, theme) {
   return json.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
 }
 
-function synthesizeToDrive_(markup, fileName, folder) {
+function synthesizeToDrive_(content, fileName, folder, ttsConfig) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('GOOGLE_TTS_API_KEY');
   if (!apiKey) return '';
-  const voiceName =
-    PropertiesService.getScriptProperties().getProperty('GOOGLE_TTS_VOICE') || DEFAULT_GOOGLE_TTS_VOICE;
-  const speakingRate = getTtsSpeakingRate_();
+  const config = ttsConfig || getTtsConfig_();
+  const payload = buildTtsRequestPayload_(content, config);
+  const response = callTtsApi_(apiKey, payload);
+  let json = response.json;
 
-  const payload = {
-    input: { markup: markup },
-    voice: { languageCode: 'ja-JP', name: voiceName },
-    audioConfig: {
-      audioEncoding: 'MP3',
-      speakingRate: speakingRate
-    }
-  };
+  if (!json.audioContent && payload.input.ssml) {
+    const fallbackPayload = buildTtsRequestPayload_(
+      buildMarkupFromPlainText_(content.plainText || stripSsml_(content.ssml || '')),
+      withTtsOverrides_(config, { useSSML: false })
+    );
+    const fallbackResponse = callTtsApi_(apiKey, fallbackPayload);
+    json = fallbackResponse.json;
+  }
 
-  const response = UrlFetchApp.fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  });
-
-  const json = JSON.parse(response.getContentText());
   if (!json.audioContent) {
-    Logger.log(JSON.stringify({ ttsError: json.error || 'No audioContent', fileName: fileName }));
+    Logger.log(JSON.stringify({
+      ttsError: json.error || 'No audioContent',
+      fileName: fileName,
+      voiceName: config.voiceName,
+      inputMode: getPreferredInputMode_(config)
+    }));
     return '';
   }
 
@@ -267,28 +345,6 @@ function synthesizeToDrive_(markup, fileName, folder) {
   const file = folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   return `https://drive.google.com/uc?export=download&id=${file.getId()}`;
-}
-
-function buildQuoteNarrationMarkup_(quotes) {
-  return quotes
-    .map((quote) => {
-      const sentences = splitIntoSpeechSentences_(quote.text);
-      return sentences.join(' [pause] ');
-    })
-    .filter(Boolean)
-    .join(' [pause long] [pause] ');
-}
-
-function buildAiNarrationMarkup_(message, theme) {
-  const normalized = normalizeNarrationText_(message);
-  const sentences = splitIntoSpeechSentences_(normalized);
-  const intro = [`おはようございます。`, `今日のテーマは、${theme}です。`];
-  const outro = [`では、今日も無理なく、ひとつずつ進めていきましょう。`];
-  return intro
-    .concat(sentences)
-    .concat(outro)
-    .filter(Boolean)
-    .join(' [pause] ');
 }
 
 function writeDailyResult_(quotes, dailyVoice) {
@@ -426,8 +482,7 @@ function markPushNotified_(date) {
 }
 
 function getOutputFolder_() {
-  const folders = DriveApp.getFoldersByName(OUTPUT_FOLDER_NAME);
-  return folders.hasNext() ? folders.next() : DriveApp.createFolder(OUTPUT_FOLDER_NAME);
+  return getOrCreateFolder_(OUTPUT_FOLDER_NAME);
 }
 
 function appendQuote_(params) {
@@ -555,6 +610,349 @@ function getDailyQuoteCount_() {
   return Math.max(1, Math.min(12, value));
 }
 
+function getTtsConfig_(overrides) {
+  const voiceName = getScriptPropertyOrDefault_('GOOGLE_TTS_VOICE', DEFAULT_GOOGLE_TTS_VOICE);
+  const languageCode = getScriptPropertyOrDefault_('GOOGLE_TTS_LANGUAGE_CODE', DEFAULT_GOOGLE_TTS_LANGUAGE_CODE);
+  const family = inferVoiceFamily_(voiceName);
+  const pitchDefault = family === 'chirp3hd' ? 0 : DEFAULT_GOOGLE_TTS_PITCH;
+  const config = {
+    voiceName: voiceName,
+    languageCode: languageCode,
+    family: family,
+    speakingRate: getNumberProperty_('GOOGLE_TTS_RATE', DEFAULT_GOOGLE_TTS_RATE, 0.7, 1.2),
+    pitch: getNumberProperty_('GOOGLE_TTS_PITCH', pitchDefault, -6, 6),
+    audioEncoding: getScriptPropertyOrDefault_('GOOGLE_TTS_AUDIO_ENCODING', DEFAULT_GOOGLE_TTS_AUDIO_ENCODING),
+    useSSML: getScriptPropertyOrDefault_('GOOGLE_TTS_USE_SSML', DEFAULT_GOOGLE_TTS_USE_SSML),
+    pauseShortMs: getNumberProperty_('GOOGLE_TTS_PAUSE_SHORT_MS', DEFAULT_TTS_PAUSE_SHORT_MS, 80, 1000),
+    pauseMediumMs: getNumberProperty_('GOOGLE_TTS_PAUSE_MEDIUM_MS', DEFAULT_TTS_PAUSE_MEDIUM_MS, 120, 1500),
+    pauseLongMs: getNumberProperty_('GOOGLE_TTS_PAUSE_LONG_MS', DEFAULT_TTS_PAUSE_LONG_MS, 180, 2000),
+    aliases: getReadingAliases_()
+  };
+  return withTtsOverrides_(config, overrides || {});
+}
+
+function withTtsOverrides_(baseConfig, overrides) {
+  const merged = {};
+  Object.keys(baseConfig).forEach((key) => {
+    merged[key] = baseConfig[key];
+  });
+  Object.keys(overrides || {}).forEach((key) => {
+    if (overrides[key] !== undefined && overrides[key] !== null && overrides[key] !== '') {
+      merged[key] = overrides[key];
+    }
+  });
+  if (!merged.family) merged.family = inferVoiceFamily_(merged.voiceName);
+  return merged;
+}
+
+function inferVoiceFamily_(voiceName) {
+  const value = String(voiceName || '').toLowerCase();
+  if (value.indexOf('chirp3-hd') !== -1) return 'chirp3hd';
+  if (value.indexOf('wavenet') !== -1) return 'wavenet';
+  if (value.indexOf('neural2') !== -1) return 'neural2';
+  if (value.indexOf('studio') !== -1) return 'studio';
+  return 'standard';
+}
+
+function getPreferredInputMode_(config) {
+  const normalizedUseSsml = String(config.useSSML || 'auto').toLowerCase();
+  if (config.family === 'chirp3hd') return 'markup';
+  if (normalizedUseSsml === 'false' || normalizedUseSsml === '0' || normalizedUseSsml === 'text') return 'text';
+  return 'ssml';
+}
+
+function buildQuoteNarrationForTts_(quotes, config) {
+  const paragraphs = quotes
+    .map((quote) => preprocessJapaneseForTts_(quote.text, config))
+    .filter((paragraph) => paragraph.sentences.length);
+  return buildNarrationContent_(paragraphs, config, { intro: [], outro: [] });
+}
+
+function buildAiNarrationForTts_(message, theme, config) {
+  const introText = `おはようございます。今日は、${theme}を意識する日です。`;
+  const outroText = 'では、今日も無理なく、ひとつずつ進めていきましょう。';
+  const paragraphs = preprocessJapaneseForTts_(message, config);
+  return buildNarrationContent_([paragraphs], config, {
+    intro: preprocessJapaneseForTts_(introText, config).sentences,
+    outro: preprocessJapaneseForTts_(outroText, config).sentences
+  });
+}
+
+function buildStandaloneNarrationForTts_(text, config) {
+  const paragraph = preprocessJapaneseForTts_(text, config);
+  return buildNarrationContent_([paragraph], config, { intro: [], outro: [] });
+}
+
+function buildNarrationContent_(paragraphs, config, options) {
+  const plainParagraphs = paragraphs
+    .map((paragraph) => paragraph.sentences)
+    .filter((sentences) => sentences.length);
+  const intro = (options && options.intro) || [];
+  const outro = (options && options.outro) || [];
+  const allParagraphs = [];
+
+  if (intro.length) allParagraphs.push(intro);
+  plainParagraphs.forEach((paragraph) => allParagraphs.push(paragraph));
+  if (outro.length) allParagraphs.push(outro);
+
+  const plainText = allParagraphs
+    .map((sentences) => sentences.join('\n'))
+    .join('\n\n');
+
+  if (getPreferredInputMode_(config) === 'ssml') {
+    return {
+      ssml: buildJapaneseSsml_(allParagraphs, config),
+      plainText: plainText
+    };
+  }
+
+  return {
+    markup: buildMarkupFromParagraphs_(allParagraphs),
+    plainText: plainText
+  };
+}
+
+function preprocessJapaneseForTts_(text, config) {
+  const normalized = normalizeNarrationText_(text);
+  const expanded = expandReadableJapanese_(normalized);
+  const lines = expanded
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => String(line || '').trim())
+    .filter(Boolean)
+    .map((line) => normalizeBulletLine_(line));
+
+  const sentences = [];
+  lines.forEach((line) => {
+    splitIntoSpeechSentences_(line).forEach((sentence) => {
+      splitLongSentence_(sentence).forEach((piece) => {
+        const finalText = piece.trim();
+        if (finalText) sentences.push(finalText);
+      });
+    });
+  });
+
+  return { sentences: sentences };
+}
+
+function expandReadableJapanese_(text) {
+  return String(text || '')
+    .replace(/https?:\/\/[^\s]+/g, (url) => convertUrlToSpeech_(url))
+    .replace(/\bwww\.[^\s]+/gi, (url) => convertUrlToSpeech_(url))
+    .replace(/\bPWA\b/gi, 'ピー ダブリュー エー')
+    .replace(/\bAI\b/g, 'エーアイ')
+    .replace(/\bUI\b/g, 'ユーアイ')
+    .replace(/\bUX\b/g, 'ユーエックス')
+    .replace(/\bSSML\b/gi, 'エス エス エム エル')
+    .replace(/\bURL\b/gi, 'ユーアールエル')
+    .replace(/\//g, '／')
+    .replace(/&/g, ' アンド ')
+    .replace(/[•●◦▪︎■]/g, '・');
+}
+
+function normalizeBulletLine_(line) {
+  return line
+    .replace(/^\s*[-*・]+\s*/g, '')
+    .replace(/^\s*\d+[.)．、]\s*/g, '')
+    .replace(/^\s*#+\s*/g, '');
+}
+
+function convertUrlToSpeech_(url) {
+  return String(url || '')
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, 'ダブリュー ダブリュー ダブリュー ドット ')
+    .replace(/\./g, ' ドット ')
+    .replace(/\//g, ' スラッシュ ')
+    .replace(/-/g, ' ハイフン ')
+    .replace(/_/g, ' アンダーバー ');
+}
+
+function splitLongSentence_(sentence) {
+  const trimmed = String(sentence || '').trim();
+  if (!trimmed) return [];
+  if (trimmed.length <= 34) return [trimmed];
+
+  const chunks = [];
+  let current = '';
+  const parts = trimmed.split(/([、，])/);
+  parts.forEach((part) => {
+    if (!part) return;
+    if ((current + part).length > 34 && current) {
+      chunks.push(current.trim());
+      current = '';
+    }
+    current += part;
+  });
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.length ? chunks : [trimmed];
+}
+
+function buildJapaneseSsml_(paragraphs, config) {
+  const shortBreak = `<break time="${Math.round(config.pauseShortMs)}ms"/>`;
+  const mediumBreak = `<break time="${Math.round(config.pauseMediumMs)}ms"/>`;
+  const longBreak = `<break time="${Math.round(config.pauseLongMs)}ms"/>`;
+  const paragraphsSsml = paragraphs
+    .map((sentences) => {
+      const body = sentences
+        .map((sentence) => `<s>${renderSentenceToSsml_(sentence, config.aliases)}</s>`)
+        .join(shortBreak);
+      return `<p>${body}</p>`;
+    })
+    .join(longBreak);
+  const prosodyAttrs = [
+    `rate="${toSsmlRate_(config.speakingRate)}"`,
+    config.family === 'chirp3hd' ? '' : `pitch="${formatPitchForSsml_(config.pitch)}"`
+  ].filter(Boolean).join(' ');
+  return `<speak><prosody ${prosodyAttrs}>${paragraphsSsml}</prosody></speak>`;
+}
+
+function renderSentenceToSsml_(sentence, aliases) {
+  const matches = buildAliasMatches_(sentence, aliases || {});
+  if (!matches.length) return escapeXml_(sentence);
+
+  let cursor = 0;
+  let output = '';
+  matches.forEach((match) => {
+    if (match.index > cursor) {
+      output += escapeXml_(sentence.slice(cursor, match.index));
+    }
+    output += `<sub alias="${escapeXmlAttribute_(match.alias)}">${escapeXml_(match.text)}</sub>`;
+    cursor = match.index + match.text.length;
+  });
+  if (cursor < sentence.length) {
+    output += escapeXml_(sentence.slice(cursor));
+  }
+  return output;
+}
+
+function buildAliasMatches_(sentence, aliases) {
+  const keys = Object.keys(aliases || {}).sort((left, right) => right.length - left.length);
+  const matches = [];
+  let cursor = 0;
+
+  while (cursor < sentence.length) {
+    let found = null;
+    keys.some((key) => {
+      if (sentence.slice(cursor, cursor + key.length) === key) {
+        found = {
+          index: cursor,
+          text: key,
+          alias: aliases[key]
+        };
+        return true;
+      }
+      return false;
+    });
+    if (found) {
+      matches.push(found);
+      cursor += found.text.length;
+    } else {
+      cursor += 1;
+    }
+  }
+
+  return matches;
+}
+
+function buildMarkupFromParagraphs_(paragraphs) {
+  return paragraphs
+    .map((sentences) => sentences.join(' [pause] '))
+    .filter(Boolean)
+    .join(' [pause long] ');
+}
+
+function buildMarkupFromPlainText_(text) {
+  return splitIntoSpeechSentences_(text).join(' [pause] ');
+}
+
+function buildTtsRequestPayload_(content, config) {
+  const inputMode = getPreferredInputMode_(config);
+  const payload = {
+    voice: {
+      languageCode: config.languageCode,
+      name: config.voiceName
+    },
+    audioConfig: {
+      audioEncoding: config.audioEncoding,
+      speakingRate: config.speakingRate
+    },
+    input: {}
+  };
+
+  if (config.family !== 'chirp3hd' && Number(config.pitch)) {
+    payload.audioConfig.pitch = config.pitch;
+  }
+
+  if (inputMode === 'ssml' && content.ssml) {
+    payload.input.ssml = content.ssml;
+  } else if (inputMode === 'markup' && content.markup) {
+    payload.input.markup = content.markup;
+  } else {
+    payload.input.text = content.plainText || content.markup || stripSsml_(content.ssml || '');
+  }
+
+  return payload;
+}
+
+function callTtsApi_(apiKey, payload) {
+  const response = UrlFetchApp.fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  return {
+    responseCode: response.getResponseCode(),
+    json: JSON.parse(response.getContentText() || '{}')
+  };
+}
+
+function getReadingAliases_() {
+  const defaults = {
+    PWA: 'ピー ダブリュー エー',
+    AI: 'エーアイ',
+    UI: 'ユーアイ',
+    UX: 'ユーエックス',
+    SSML: 'エス エス エム エル',
+    TTS: 'ティー ティー エス',
+    URL: 'ユーアールエル'
+  };
+  const raw = PropertiesService.getScriptProperties().getProperty('GOOGLE_TTS_ALIASES');
+  if (!raw) return defaults;
+
+  try {
+    const parsed = JSON.parse(raw);
+    Object.keys(parsed || {}).forEach((key) => {
+      defaults[key] = String(parsed[key]);
+    });
+  } catch (error) {
+    Logger.log(`Failed to parse GOOGLE_TTS_ALIASES: ${error}`);
+  }
+
+  return defaults;
+}
+
+function getSampleJapaneseText_() {
+  return getScriptPropertyOrDefault_('GOOGLE_TTS_SAMPLE_TEXT', DEFAULT_JAPANESE_SAMPLE_TEXT);
+}
+
+function getScriptPropertyOrDefault_(key, fallback) {
+  const value = PropertiesService.getScriptProperties().getProperty(key);
+  return value === null || value === undefined || value === '' ? fallback : value;
+}
+
+function getNumberProperty_(key, fallback, min, max) {
+  const value = Number(getScriptPropertyOrDefault_(key, fallback));
+  if (!isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, value));
+}
+
+function getOrCreateFolder_(name) {
+  const folders = DriveApp.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(name);
+}
+
 function jsonOutput_(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
@@ -586,13 +984,6 @@ function truncate_(text, maxLength) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
-function getTtsSpeakingRate_() {
-  const raw = PropertiesService.getScriptProperties().getProperty('GOOGLE_TTS_RATE');
-  const value = Number(raw || DEFAULT_GOOGLE_TTS_RATE);
-  if (!isFinite(value)) return DEFAULT_GOOGLE_TTS_RATE;
-  return Math.max(0.8, Math.min(1.1, value));
-}
-
 function normalizeNarrationText_(text) {
   return String(text || '')
     .replace(/\r\n/g, '\n')
@@ -605,10 +996,52 @@ function splitIntoSpeechSentences_(text) {
   const normalized = normalizeNarrationText_(text)
     .replace(/[。]+/g, '。')
     .replace(/[！!]+/g, '！')
-    .replace(/[？?]+/g, '？');
+    .replace(/[？?]+/g, '？')
+    .replace(/([：:])\s*/g, '$1 ')
+    .replace(/([;；])\s*/g, '$1 ');
+  const sentences = [];
+  let current = '';
 
-  return normalized
-    .split(/(?<=[。！？])/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
+  for (var index = 0; index < normalized.length; index += 1) {
+    const char = normalized.charAt(index);
+    current += char;
+    if (char === '。' || char === '！' || char === '？') {
+      const trimmed = current.trim();
+      if (trimmed) sentences.push(trimmed);
+      current = '';
+    }
+  }
+
+  if (current.trim()) sentences.push(current.trim());
+  return sentences;
+}
+
+function toSsmlRate_(rate) {
+  return `${Math.round(Number(rate || 1) * 100)}%`;
+}
+
+function formatPitchForSsml_(pitch) {
+  const value = Number(pitch || 0);
+  if (!isFinite(value) || value === 0) return 'default';
+  return `${value > 0 ? '+' : ''}${value}st`;
+}
+
+function stripSsml_(ssml) {
+  return String(ssml || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeXml_(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function escapeXmlAttribute_(value) {
+  return escapeXml_(value);
 }
