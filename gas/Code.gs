@@ -66,6 +66,39 @@ const TTS_VOICE_PRESETS = {
     speakingRate: 0.9,
     pitch: 0
   },
+  chirp_kore: {
+    label: 'Chirp 3 HD Kore | やわらかめ女性',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Chirp3-HD-Kore',
+    family: 'chirp3hd',
+    speakingRate: 0.92,
+    pitch: 0,
+    pauseShortMs: 200,
+    pauseMediumMs: 320,
+    pauseLongMs: 560
+  },
+  chirp_leda: {
+    label: 'Chirp 3 HD Leda | 甘め女性',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Chirp3-HD-Leda',
+    family: 'chirp3hd',
+    speakingRate: 0.95,
+    pitch: 0,
+    pauseShortMs: 180,
+    pauseMediumMs: 300,
+    pauseLongMs: 520
+  },
+  chirp_zephyr: {
+    label: 'Chirp 3 HD Zephyr | 明るい女性',
+    languageCode: 'ja-JP',
+    voiceName: 'ja-JP-Chirp3-HD-Zephyr',
+    family: 'chirp3hd',
+    speakingRate: 0.97,
+    pitch: 0,
+    pauseShortMs: 170,
+    pauseMediumMs: 290,
+    pauseLongMs: 500
+  },
   neural2_b: {
     label: 'Neural2 B | すっきり女性',
     languageCode: 'ja-JP',
@@ -218,12 +251,9 @@ function createVoiceComparisonSamples() {
   const presetKeys = [
     'chirp_aoede',
     'chirp_aoede_cute',
-    'chirp_achernar',
-    'wavenet_a',
-    'wavenet_a_sweet',
-    'neural2_b',
-    'neural2_b_sweet',
-    'wavenet_d'
+    'chirp_kore',
+    'chirp_leda',
+    'chirp_zephyr'
   ];
   const outputs = [];
 
