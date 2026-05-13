@@ -436,6 +436,13 @@ async function playCurrent() {
 
   updateNowPlaying();
 
+  if (!track.audioUrl && !String(track.type || "").startsWith("daily-")) {
+    const generatedUrl = await ensureTrackAudio(track);
+    if (generatedUrl) {
+      track.audioUrl = generatedUrl;
+    }
+  }
+
   if (track.audioUrl) {
     if (audio.src !== track.audioUrl) audio.src = track.audioUrl;
     await audio.play();
@@ -445,6 +452,40 @@ async function playCurrent() {
   }
 
   speakText(track.text, () => nextTrack(true));
+}
+
+async function ensureTrackAudio(track) {
+  if (!CONFIG.sheetsEndpoint || !track?.quoteId) return "";
+
+  try {
+    const payload = new URLSearchParams({
+      action: "ensureQuoteAudio",
+      quoteId: track.quoteId
+    });
+
+    const response = await fetch(CONFIG.sheetsEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+      },
+      body: payload.toString()
+    });
+
+    if (!response.ok) throw new Error(`ensureQuoteAudio status ${response.status}`);
+    const result = await response.json();
+    if (!result.ok || !result.quote) throw new Error(result.error || "Audio generation failed");
+
+    const updatedQuote = normalizeQuote(result.quote, 0);
+    state.quotes = state.quotes.map((quote) => (quote.id === updatedQuote.id ? updatedQuote : quote));
+    renderQuotes();
+    updateNowPlaying();
+
+    return track.type === "ai" ? updatedQuote.aiAudioUrl : updatedQuote.quoteAudioUrl;
+  } catch (error) {
+    console.warn(error);
+    setFormStatus("音声を自動生成できなかったので、簡易読み上げで再生します。");
+    return "";
+  }
 }
 
 function togglePlayback() {

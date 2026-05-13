@@ -174,6 +174,10 @@ function doPost(e) {
     return jsonOutput_(upsertPushSubscription_((e && e.parameter) || {}));
   }
 
+  if (action === 'ensureQuoteAudio') {
+    return jsonOutput_(ensureQuoteAudio_((e && e.parameter) || {}));
+  }
+
   if (action === 'testPush') {
     return jsonOutput_(sendTestPush_());
   }
@@ -293,6 +297,48 @@ function createVoiceComparisonSamples() {
     sampleText: text,
     outputs: outputs
   };
+}
+
+function ensureQuoteAudio_(params) {
+  const quoteId = String(params.quoteId || '').trim();
+  const force = String(params.force || '').toLowerCase() === 'true';
+  if (!quoteId) {
+    return { ok: false, error: 'quoteId is required' };
+  }
+
+  const quoteRow = getQuoteRowById_(quoteId);
+  if (!quoteRow || !quoteRow.item || !quoteRow.item.text) {
+    return { ok: false, error: 'Quote not found' };
+  }
+
+  const quote = quoteRow.item;
+  const ttsConfig = getTtsConfig_();
+  const folder = getOutputFolder_();
+  const theme = buildTheme_([quote]);
+  const aiMessage = quote.aiMessage || generateAiMessage_([quote], theme);
+
+  let quoteAudioUrl = quote.quoteAudioUrl;
+  let aiAudioUrl = quote.aiAudioUrl;
+
+  if (force || !quoteAudioUrl) {
+    const quoteNarration = buildQuoteNarrationForTts_([quote], ttsConfig);
+    quoteAudioUrl = synthesizeToDrive_(quoteNarration, `quote-${quote.id}.mp3`, folder, ttsConfig);
+  }
+
+  if (force || !aiAudioUrl) {
+    const aiNarration = buildAiNarrationForTts_(aiMessage, theme, ttsConfig);
+    aiAudioUrl = synthesizeToDrive_(aiNarration, `ai-${quote.id}.mp3`, folder, ttsConfig);
+  }
+
+  updateQuoteAudioRow_(quoteRow.rowNumber, {
+    aiMessage: aiMessage,
+    quoteAudioUrl: quoteAudioUrl,
+    aiAudioUrl: aiAudioUrl,
+    generatedDate: formatDate_(new Date())
+  });
+
+  const updated = getQuoteRowById_(quoteId);
+  return { ok: true, quote: updated ? updated.item : quote };
 }
 
 function getPublicTtsSettings_() {
@@ -434,6 +480,37 @@ function getQuoteRows_() {
     .filter((row) => row.text);
 }
 
+function getQuoteRowById_(quoteId) {
+  const sheet = getQuoteSheet_();
+  ensureQuoteHeaders_(sheet);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return null;
+  const headers = values[0].map(String);
+  const rowIndex = values.slice(1).findIndex((row) => String(row[headers.indexOf('id')] || '') === String(quoteId));
+  if (rowIndex === -1) return null;
+
+  const row = values[rowIndex + 1];
+  const item = {};
+  headers.forEach((header, index) => {
+    item[header] = row[index];
+  });
+
+  return {
+    rowNumber: rowIndex + 2,
+    item: {
+      id: String(item.id || ''),
+      text: String(item.text || ''),
+      tags: String(item.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean),
+      source: String(item.source || ''),
+      enabled: item.enabled !== false && String(item.enabled).toUpperCase() !== 'FALSE',
+      quoteAudioUrl: String(item.quoteAudioUrl || ''),
+      aiMessage: String(item.aiMessage || ''),
+      aiAudioUrl: String(item.aiAudioUrl || ''),
+      generatedDate: String(item.generatedDate || '')
+    }
+  };
+}
+
 function getQuoteSheet_() {
   const spreadsheet = SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
   const sheet = spreadsheet.getSheetByName(SHEET_NAME);
@@ -555,6 +632,21 @@ function writeDailyResult_(quotes, dailyVoice) {
     if (aiMessageCol) sheet.getRange(rowNumber, aiMessageCol).setValue(dailyVoice.aiMessage);
     if (quoteAudioCol) sheet.getRange(rowNumber, quoteAudioCol).setValue(dailyVoice.quoteAudioUrl);
     if (aiAudioCol) sheet.getRange(rowNumber, aiAudioCol).setValue(dailyVoice.aiAudioUrl);
+  });
+}
+
+function updateQuoteAudioRow_(rowNumber, payload) {
+  const sheet = getQuoteSheet_();
+  ensureQuoteHeaders_(sheet);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+
+  const fields = ['aiMessage', 'quoteAudioUrl', 'aiAudioUrl', 'generatedDate'];
+  fields.forEach((field) => {
+    const column = headers.indexOf(field) + 1;
+    if (column && Object.prototype.hasOwnProperty.call(payload, field)) {
+      sheet.getRange(rowNumber, column).setValue(payload[field] || '');
+    }
   });
 }
 

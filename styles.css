@@ -288,6 +288,7 @@ input[type="range"] {
 }
 
 .tool-strip {
+  order: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -355,6 +356,7 @@ select {
 }
 
 .daily-brief {
+  order: 5;
   display: grid;
   grid-template-columns: minmax(0, 0.78fr) minmax(260px, 1.22fr);
   gap: 18px;
@@ -363,6 +365,7 @@ select {
 }
 
 .voice-lab {
+  order: 6;
   display: grid;
   grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
   gap: 18px;
@@ -444,6 +447,7 @@ select {
 }
 
 .entry-band {
+  order: 2;
   display: grid;
   grid-template-columns: minmax(260px, 0.78fr) minmax(0, 1.22fr);
   gap: 18px;
@@ -456,6 +460,7 @@ select {
 }
 
 .archive-band {
+  order: 4;
   display: grid;
   grid-template-columns: minmax(260px, 0.78fr) minmax(0, 1.22fr);
   gap: 18px;
@@ -574,6 +579,7 @@ select {
 }
 
 .quote-grid {
+  order: 3;
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: 12px;
