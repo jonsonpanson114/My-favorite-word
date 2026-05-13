@@ -3,6 +3,7 @@ const DAILY_SHEET_NAME = 'DailyVoices';
 const SUBSCRIPTION_SHEET_NAME = 'PushSubscriptions';
 const OUTPUT_FOLDER_NAME = 'Voice Shelf Audio';
 const SAMPLE_OUTPUT_FOLDER_NAME = 'Voice Shelf Audio Samples';
+const FORMATION_OUTPUT_FOLDER_NAME = 'Voice Shelf Formations';
 const GEMINI_MODEL = 'gemini-3-flash-preview';
 const DEFAULT_GOOGLE_TTS_VOICE = 'ja-JP-Chirp3-HD-Leda';
 const DEFAULT_GOOGLE_TTS_LANGUAGE_CODE = 'ja-JP';
@@ -178,6 +179,10 @@ function doPost(e) {
     return jsonOutput_(ensureQuoteAudio_((e && e.parameter) || {}));
   }
 
+  if (action === 'ensureFormationAudio') {
+    return jsonOutput_(ensureFormationAudio_((e && e.parameter) || {}));
+  }
+
   if (action === 'testPush') {
     return jsonOutput_(sendTestPush_());
   }
@@ -339,6 +344,75 @@ function ensureQuoteAudio_(params) {
 
   const updated = getQuoteRowById_(quoteId);
   return { ok: true, quote: updated ? updated.item : quote };
+}
+
+function ensureFormationAudio_(params) {
+  const mode = String(params.mode || 'quote').trim().toLowerCase();
+  const requestedIds = String(params.quoteIds || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const title = String(params.title || '').trim();
+  const force = String(params.force || '').toLowerCase() === 'true';
+
+  if (!requestedIds.length) {
+    return { ok: false, error: 'quoteIds is required' };
+  }
+
+  const quotesById = {};
+  getQuoteRows_().forEach((quote) => {
+    quotesById[quote.id] = quote;
+  });
+
+  const quotes = requestedIds
+    .map((id) => quotesById[id])
+    .filter((quote) => quote && quote.enabled && quote.text)
+    .slice(0, 10);
+
+  if (!quotes.length) {
+    return { ok: false, error: 'No valid quotes found for formation' };
+  }
+
+  const ttsConfig = getTtsConfig_();
+  const folder = getOrCreateFolder_(FORMATION_OUTPUT_FOLDER_NAME);
+  const theme = buildTheme_(quotes);
+  const formationTitle = title || `${quotes.length}件の名言フォーメーション`;
+  const signature = buildFormationSignature_(quotes, mode, ttsConfig);
+  const fileName = `formation-${signature}.mp3`;
+
+  if (!force) {
+    const existingUrl = findExistingDriveFileUrl_(folder, fileName);
+    if (existingUrl) {
+      return {
+        ok: true,
+        formation: {
+          mode: mode,
+          title: formationTitle,
+          quoteIds: quotes.map((quote) => quote.id),
+          audioUrl: existingUrl
+        }
+      };
+    }
+  }
+
+  let narration;
+  if (mode === 'ai') {
+    const aiMessage = generateAiMessage_(quotes, theme);
+    narration = buildAiNarrationForTts_(aiMessage, theme, ttsConfig);
+  } else {
+    narration = buildQuoteNarrationForTts_(quotes, ttsConfig);
+  }
+
+  const audioUrl = synthesizeToDrive_(narration, fileName, folder, ttsConfig);
+  return {
+    ok: Boolean(audioUrl),
+    formation: {
+      mode: mode,
+      title: formationTitle,
+      quoteIds: quotes.map((quote) => quote.id),
+      audioUrl: audioUrl
+    }
+  };
 }
 
 function getPublicTtsSettings_() {
@@ -764,6 +838,32 @@ function markPushNotified_(date) {
 
 function getOutputFolder_() {
   return getOrCreateFolder_(OUTPUT_FOLDER_NAME);
+}
+
+function findExistingDriveFileUrl_(folder, fileName) {
+  const files = folder.getFilesByName(fileName);
+  if (!files.hasNext()) return '';
+  const file = files.next();
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return `https://drive.google.com/uc?export=download&id=${file.getId()}`;
+}
+
+function buildFormationSignature_(quotes, mode, ttsConfig) {
+  const base = [
+    mode,
+    ttsConfig.voiceName,
+    ttsConfig.speakingRate,
+    ttsConfig.pauseShortMs,
+    ttsConfig.pauseMediumMs,
+    ttsConfig.pauseLongMs,
+    quotes.map((quote) => `${quote.id}:${quote.text}`).join('|')
+  ].join('::');
+
+  let hash = 0;
+  for (var index = 0; index < base.length; index += 1) {
+    hash = (hash * 31 + base.charCodeAt(index)) % 2147483647;
+  }
+  return String(hash);
 }
 
 function appendQuote_(params) {

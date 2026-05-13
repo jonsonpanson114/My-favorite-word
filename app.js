@@ -81,6 +81,9 @@ const CONFIG = {
   sheetId: "1maNGIkVq8CslP5SwJtrDglcGqjJduXa3hRGM_KQadK8",
   pushPublicKeyEndpoint: "/api/push-public-key",
   pushSubscribeEndpoint: "/api/push-subscribe",
+  formationSize: 6,
+  formationMinSize: 5,
+  formationMaxSize: 10,
   speechRate: 0.9,
   speechPitch: 0.95
 };
@@ -88,6 +91,7 @@ const CONFIG = {
 const state = {
   quotes: [],
   history: [],
+  formations: [],
   mode: "both",
   theme: "all",
   favoritesOnly: false,
@@ -249,35 +253,62 @@ function filteredQuotes() {
 
 function buildQueue(startId = null) {
   const items = filteredQuotes();
+  state.formations = buildFormations(items);
   const tracks = [];
 
-  items.forEach((quote) => {
+  state.formations.forEach((formation) => {
     if (state.mode === "both" || state.mode === "quote") {
       tracks.push({
-        type: "quote",
-        quoteId: quote.id,
-        title: quote.text,
+        type: "quote-formation",
+        formationId: formation.id,
+        quoteId: formation.quoteIds[0],
+        quoteIds: formation.quoteIds,
+        title: formation.title,
         modeLabel: "原文アファメーション",
-        text: quote.text,
-        audioUrl: quote.quoteAudioUrl
+        text: formation.previewText,
+        audioUrl: ""
       });
     }
 
     if (state.mode === "both" || state.mode === "ai") {
       tracks.push({
-        type: "ai",
-        quoteId: quote.id,
-        title: quote.aiMessage || "AI語りかけ",
+        type: "ai-formation",
+        formationId: formation.id,
+        quoteId: formation.quoteIds[0],
+        quoteIds: formation.quoteIds,
+        title: formation.title,
         modeLabel: "AI語りかけ",
-        text: quote.aiMessage || createFallbackAiMessage(quote),
-        audioUrl: quote.aiAudioUrl
+        text: formation.previewText,
+        audioUrl: ""
       });
     }
   });
 
   state.queue = tracks;
-  const index = startId ? tracks.findIndex((track) => track.quoteId === startId) : 0;
+  const index = startId
+    ? tracks.findIndex((track) => Array.isArray(track.quoteIds) && track.quoteIds.includes(startId))
+    : 0;
   state.cursor = Math.max(0, index);
+}
+
+function buildFormations(quotes) {
+  if (!quotes.length) return [];
+  const size = Math.max(CONFIG.formationMinSize, Math.min(CONFIG.formationMaxSize, CONFIG.formationSize));
+  const formations = [];
+
+  for (let index = 0; index < quotes.length; index += size) {
+    const chunk = quotes.slice(index, index + size);
+    if (!chunk.length) continue;
+    formations.push({
+      id: `formation-${index}`,
+      title: `${chunk.length}件の名言フォーメーション`,
+      quoteIds: chunk.map((quote) => quote.id),
+      previewText: chunk.map((quote) => quote.text).join(" / "),
+      quotes: chunk
+    });
+  }
+
+  return formations;
 }
 
 function createFallbackAiMessage(quote) {
@@ -320,6 +351,9 @@ function renderQuotes() {
       buildQueue(quote.id);
       playCurrent();
     });
+
+    node.querySelector(".queue-button").textContent = "フォーメーションに入れる";
+    node.querySelector(".listen-button").textContent = "この周辺5〜10件を聴く";
 
     els.quoteGrid.append(node);
   });
@@ -455,7 +489,13 @@ async function playCurrent() {
 }
 
 async function ensureTrackAudio(track) {
-  if (!CONFIG.sheetsEndpoint || !track?.quoteId) return "";
+  if (!CONFIG.sheetsEndpoint || !track) return "";
+
+  if (String(track.type || "").includes("formation")) {
+    return ensureFormationTrackAudio(track);
+  }
+
+  if (!track.quoteId) return "";
 
   try {
     const payload = new URLSearchParams({
@@ -484,6 +524,34 @@ async function ensureTrackAudio(track) {
   } catch (error) {
     console.warn(error);
     setFormStatus("音声を自動生成できなかったので、簡易読み上げで再生します。");
+    return "";
+  }
+}
+
+async function ensureFormationTrackAudio(track) {
+  try {
+    const payload = new URLSearchParams({
+      action: "ensureFormationAudio",
+      quoteIds: (track.quoteIds || []).join(","),
+      mode: track.type === "ai-formation" ? "ai" : "quote",
+      title: track.title
+    });
+
+    const response = await fetch(CONFIG.sheetsEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+      },
+      body: payload.toString()
+    });
+
+    if (!response.ok) throw new Error(`ensureFormationAudio status ${response.status}`);
+    const result = await response.json();
+    if (!result.ok || !result.formation?.audioUrl) throw new Error(result.error || "Formation audio generation failed");
+    return result.formation.audioUrl;
+  } catch (error) {
+    console.warn(error);
+    setFormStatus("フォーメーション音声を自動生成できなかったので、簡易読み上げで再生します。");
     return "";
   }
 }
