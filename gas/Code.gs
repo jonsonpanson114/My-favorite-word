@@ -144,6 +144,9 @@ function doGet(e) {
   if (action === 'today') {
     return jsonOutput_(getTodayVoice_());
   }
+  if (action === 'history') {
+    return jsonOutput_({ ok: true, items: getDailyVoiceHistory_() });
+  }
   if (action === 'ttsSettings') {
     return jsonOutput_({ ok: true, settings: getPublicTtsSettings_() });
   }
@@ -369,6 +372,37 @@ function getTodayVoice_() {
   }
 
   return { ok: true, date: today, dailyVoice: dailyVoice };
+}
+
+function getDailyVoiceHistory_() {
+  const sheet = getDailySheet_();
+  ensureDailyHeaders_(sheet);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const headers = values[0].map(String);
+  return values
+    .slice(1)
+    .filter((row) => row.some((cell) => cell !== ''))
+    .map((row) => {
+      const item = {};
+      headers.forEach((header, index) => {
+        item[header] = row[index];
+      });
+      return {
+        date: normalizeSheetDate_(item.date),
+        theme: String(item.theme || ''),
+        quoteIds: String(item.quoteIds || '').split(',').map((id) => id.trim()).filter(Boolean),
+        aiMessage: String(item.aiMessage || ''),
+        quoteAudioUrl: String(item.quoteAudioUrl || ''),
+        aiAudioUrl: String(item.aiAudioUrl || ''),
+        appUrl: String(item.appUrl || ''),
+        status: String(item.status || ''),
+        pushNotifiedAt: String(item.pushNotifiedAt || '')
+      };
+    })
+    .filter((item) => item.date && (item.quoteAudioUrl || item.aiAudioUrl))
+    .sort((left, right) => right.date.localeCompare(left.date));
 }
 
 function getQuoteRows_() {

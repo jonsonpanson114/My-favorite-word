@@ -87,6 +87,7 @@ const CONFIG = {
 
 const state = {
   quotes: [],
+  history: [],
   mode: "both",
   theme: "all",
   favoritesOnly: false,
@@ -102,6 +103,8 @@ const state = {
 const els = {
   quoteGrid: document.querySelector("#quoteGrid"),
   template: document.querySelector("#quoteTemplate"),
+  archiveGrid: document.querySelector("#archiveGrid"),
+  archiveTemplate: document.querySelector("#archiveTemplate"),
   themeSelect: document.querySelector("#themeSelect"),
   favoritesOnly: document.querySelector("#favoritesOnly"),
   segments: document.querySelectorAll(".segment"),
@@ -188,6 +191,18 @@ function createLocalQuote({ text, tags, source }) {
   };
 }
 
+function normalizeDailyVoice(row) {
+  return {
+    date: String(row.date || ""),
+    theme: String(row.theme || ""),
+    quoteIds: Array.isArray(row.quoteIds) ? row.quoteIds : String(row.quoteIds || "").split(",").map((id) => id.trim()).filter(Boolean),
+    aiMessage: String(row.aiMessage || ""),
+    quoteAudioUrl: String(row.quoteAudioUrl || ""),
+    aiAudioUrl: String(row.aiAudioUrl || ""),
+    status: String(row.status || "")
+  };
+}
+
 async function loadQuotes() {
   if (!CONFIG.sheetsEndpoint) {
     state.quotes = FALLBACK_QUOTES;
@@ -203,6 +218,24 @@ async function loadQuotes() {
   } catch (error) {
     console.warn(error);
     state.quotes = FALLBACK_QUOTES;
+  }
+}
+
+async function loadHistory() {
+  if (!CONFIG.sheetsEndpoint) {
+    state.history = [];
+    return;
+  }
+
+  try {
+    const response = await fetch(`${CONFIG.sheetsEndpoint}?action=history`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`History endpoint returned ${response.status}`);
+    const payload = await response.json();
+    const rows = Array.isArray(payload.items) ? payload.items : [];
+    state.history = rows.map(normalizeDailyVoice).filter((item) => item.quoteAudioUrl || item.aiAudioUrl);
+  } catch (error) {
+    console.warn(error);
+    state.history = [];
   }
 }
 
@@ -292,6 +325,64 @@ function renderQuotes() {
   });
 
   highlightCurrentCard();
+}
+
+function renderHistory() {
+  els.archiveGrid.innerHTML = "";
+
+  if (!state.history.length) {
+    const empty = document.createElement("p");
+    empty.className = "sample-empty";
+    empty.textContent = "まだアーカイブされた音声がありません。";
+    els.archiveGrid.append(empty);
+    return;
+  }
+
+  state.history.forEach((entry) => {
+    const node = els.archiveTemplate.content.firstElementChild.cloneNode(true);
+    node.querySelector(".archive-date").textContent = entry.date;
+    node.querySelector(".archive-theme").textContent = entry.theme || "過去の声";
+    node.querySelector(".archive-message").textContent = entry.aiMessage || "この日のAI語りかけ";
+
+    node.querySelector(".archive-both-button").addEventListener("click", () => playDailyVoiceEntry(entry, "both"));
+    node.querySelector(".archive-quote-button").addEventListener("click", () => playDailyVoiceEntry(entry, "quote"));
+    node.querySelector(".archive-ai-button").addEventListener("click", () => playDailyVoiceEntry(entry, "ai"));
+
+    els.archiveGrid.append(node);
+  });
+}
+
+function playDailyVoiceEntry(entry, mode) {
+  const tracks = [];
+  const titleBase = `${entry.date} | ${entry.theme || "今日の声"}`;
+
+  if ((mode === "both" || mode === "quote") && entry.quoteAudioUrl) {
+    tracks.push({
+      type: "daily-quote",
+      quoteId: `daily-${entry.date}`,
+      title: titleBase,
+      modeLabel: "原文アファメーション",
+      text: titleBase,
+      audioUrl: entry.quoteAudioUrl
+    });
+  }
+
+  if ((mode === "both" || mode === "ai") && entry.aiAudioUrl) {
+    tracks.push({
+      type: "daily-ai",
+      quoteId: `daily-${entry.date}`,
+      title: entry.aiMessage || titleBase,
+      modeLabel: "AI語りかけ",
+      text: entry.aiMessage || titleBase,
+      audioUrl: entry.aiAudioUrl
+    });
+  }
+
+  if (!tracks.length) return;
+  state.queue = tracks;
+  state.cursor = 0;
+  updateNowPlaying();
+  playCurrent();
 }
 
 function toggleFavorite(id) {
@@ -492,9 +583,11 @@ function bindEvents() {
 
   els.syncButton.addEventListener("click", async () => {
     await loadQuotes();
+    await loadHistory();
     populateThemes();
     buildQueue();
     renderQuotes();
+    renderHistory();
     updateNowPlaying();
   });
 
@@ -803,9 +896,11 @@ async function boot() {
   }
 
   await loadQuotes();
+  await loadHistory();
   populateThemes();
   buildQueue();
   renderQuotes();
+  renderHistory();
   updateNowPlaying();
   renderTtsSamples([]);
   bindEvents();

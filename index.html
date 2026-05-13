@@ -210,6 +210,18 @@
         </form>
       </section>
 
+      <section class="archive-band" aria-labelledby="archiveTitle">
+        <div class="entry-copy">
+          <p class="eyebrow">声のアーカイブ</p>
+          <h2 id="archiveTitle">過去の日の音声も、ここから聴けます。</h2>
+          <p>
+            今日だけではなく、これまで生成した「原文アファメーション」と「AI語りかけ」を日付ごとにたどれます。
+          </p>
+        </div>
+
+        <div class="archive-grid" id="archiveGrid" aria-live="polite"></div>
+      </section>
+
       <section class="quote-grid" id="quoteGrid" aria-label="名言一覧"></section>
     </main>
 
@@ -236,6 +248,21 @@
         <div class="card-actions">
           <button class="queue-button" type="button">キューに追加</button>
           <button class="listen-button" type="button">この名言から聴く</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="archiveTemplate">
+      <article class="archive-card">
+        <div class="archive-head">
+          <span class="tag archive-date"></span>
+          <strong class="archive-theme"></strong>
+        </div>
+        <p class="archive-message"></p>
+        <div class="card-actions">
+          <button class="queue-button archive-both-button" type="button">両方を聴く</button>
+          <button class="listen-button archive-quote-button" type="button">原文だけ</button>
+          <button class="listen-button archive-ai-button" type="button">AIだけ</button>
         </div>
       </article>
     </template>
